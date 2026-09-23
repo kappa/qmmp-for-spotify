@@ -101,8 +101,9 @@ progress, timestamp.
 - `pause()`, `seek()`, `stop()` → matching API calls. `stop()` = pause on device.
 - Mirroring: on each `stateChanged` dispatch state (Playing/Paused), elapsed time,
   duration and track metadata to `StateHandler`.
-- Gapless: when remaining time < 15 s, call `sendNextTrackRequest()`; when the next
-  source arrives, `queue(uri)` it on the device. When the poller shows the queued track
+- Gapless: the engine dispatches elapsed time every 250 ms; qmmp's `StateHandler` then
+  requests the next track by itself 7 s before the end (`qmmp/statehandler.cpp:69-91`).
+  When the next source arrives, `queue(uri)` it on the device. When the poller shows the queued track
   playing, switch current to it and dispatch the new track (same pattern as the internal
   engine's gapless path).
 - If the device plays a track the engine didn't expect, the engine does nothing
