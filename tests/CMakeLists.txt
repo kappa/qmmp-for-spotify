@@ -6,3 +6,4 @@ endfunction()
 
 spotify_test(tst_spotifylink)
 spotify_test(tst_spotifyjson)
+spotify_test(tst_apipolicy)
