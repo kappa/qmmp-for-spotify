@@ -61,6 +61,7 @@ void EngineLogic::play()
         return;
     }
     m_trackReported = false;
+    m_commandAt = -1;
     if(m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
     {
         apply(m_last);
@@ -112,6 +113,7 @@ void EngineLogic::stop()
     m_awaiting = false;
     m_trackReported = false;
     m_track = SpotifyTrack();
+    m_commandAt = -1;
     setState(EngineState::Stopped);
 }
 

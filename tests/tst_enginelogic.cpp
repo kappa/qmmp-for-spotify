@@ -59,6 +59,7 @@ private slots:
     void ignoresOtherDevices();
     void interpolatesElapsed();
     void playFailureClearsTracks();
+    void newTrackReportsWithinStaleCommandGrace();
 
 private:
     void startPlaying(const QString &trackId);
@@ -213,6 +214,21 @@ void TestEngineLogic::playFailureClearsTracks()
     QCOMPARE(m_sink.calls.last(), u"error"_s);
     QVERIFY(m_logic->trackIds().isEmpty());
     QVERIFY(!m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::newTrackReportsWithinStaleCommandGrace()
+{
+    startPlaying(u"a"_s);
+    m_logic->pause();
+    m_now += 200;
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_now += 200;
+    m_sink.calls.clear();
+    m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 300));
+    QCOMPARE(m_sink.calls, (QStringList { u"state Playing"_s, u"track spotify://track/b Title b"_s }));
+    QCOMPARE(m_logic->state(), EngineState::Playing);
 }
 
 QTEST_APPLESS_MAIN(TestEngineLogic)
