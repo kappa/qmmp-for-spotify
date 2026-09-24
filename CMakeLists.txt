@@ -10,4 +10,6 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Network NetworkAuth Widgets Te
 
 enable_testing()
 add_subdirectory(src/logic)
+add_subdirectory(src/core)
+add_subdirectory(tools)
 add_subdirectory(tests)
