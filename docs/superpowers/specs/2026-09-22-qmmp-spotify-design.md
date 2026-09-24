@@ -120,11 +120,11 @@ progress, timestamp.
   - Re-loading clears and refills the same-named qmmp playlist.
 - **Settings dialog**: client id, redirect port (default 8898), the exact redirect URI
   to register (`http://127.0.0.1:8898/callback`), Login/Logout button, status line.
-- **Follower**: on `stateChanged` for the selected device, if the track differs from
-  what qmmp is playing (including qmmp stopped while the device plays):
-  find `spotify://track/<id>` in the current playlist, else append it (with metadata);
-  make it current and start playback. The engine adopts, so the device is not restarted.
-  Events for other devices are ignored.
+- **Follower**: on a change of the device's track or play state (when `stateChanged`
+  fires for the selected device), if the track differs from what qmmp is playing
+  (including qmmp stopped while the device plays): find `spotify://track/<id>` in the
+  current playlist, else append it (with metadata); make it current and start playback.
+  The engine adopts, so the device is not restarted. Events for other devices are ignored.
 - **Link expansion**: connected to `tracksAdded` of every playlist
   (`PlayListManager` signals for new playlists). Each added track whose path parses as
   a `SpotifyLink` and is not already a canonical, tagged track is replaced in place by
@@ -174,3 +174,10 @@ volume control (possible later via `PUT /me/player/volume`).
 - Whether Spotify accepts a dynamic loopback port; if yes, the port setting can go.
 - Build dependencies available: `qt6-qtbase-devel`, `qt6-qtnetworkauth-devel`
   (not installed yet), and a qmmp 2.4.2 install prefix with its `.pc` files.
+
+## Changes during implementation
+
+- The follower is edge-triggered: it acts only when the selected device switches track or starts playing compared with the previous poll. qmmp therefore does not take over playback at startup if the device is already playing, and a stale poll after Stop cannot restart playback.
+- Login success and failure are reported through the plugin's notices, so the outcome is shown even if the settings dialog was closed; a new login releases any pending callback listener first.
+- On Qt 6.11 a rejected token refresh arrives only as requestFailed(ServerError); that logs the user out (a transient 5xx does too), network errors do not.
+- Known limitation kept: Spotify queue items cannot be removed, so skipping in the last ~7 s of a track can make the device play the next track twice.
