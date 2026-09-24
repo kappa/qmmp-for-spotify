@@ -1,9 +1,11 @@
 #include <QGuiApplication>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTime>
 #include <QTimer>
 #include "spotifyapi.h"
 #include "spotifyauth.h"
+#include "spotifypoller.h"
 
 using namespace Qt::StringLiterals;
 
@@ -49,7 +51,7 @@ int main(int argc, char **argv)
     {
         qCritical("usage: SPOTIFY_CLIENT_ID=<id> spotify-cli login | logout | token | me | devices | state | playlists"
                   " | items <playlist id> | liked | album <album id> | track <track id>"
-                  " | play <device id> <spotify uri> | pause <device id>");
+                  " | play <device id> <spotify uri> | pause <device id> | watch <device id>");
         return 2;
     }
 
@@ -111,6 +113,18 @@ int main(int argc, char **argv)
             api.play(arg1, { arg2 }, 0, finish);
         else if(command == "pause"_L1)
             api.pause(arg1, finish);
+        else if(command == "watch"_L1)
+        {
+            auto *poller = new SpotifyPoller(&api, &app);
+            poller->setSelectedDevice(arg1);
+            QObject::connect(poller, &SpotifyPoller::stateChanged, &app, [](const PlayerState &s) {
+                out() << QTime::currentTime().toString(u"HH:mm:ss"_s) << "  "
+                      << (s.hasPlayback ? s.deviceName : u"-"_s) << (s.isPlaying ? " playing " : " paused ")
+                      << s.track.title << " " << s.progressMs / 1000 << "s\n";
+                out().flush();
+            });
+            poller->setEnabled(true);
+        }
         else
         {
             out() << "unknown command\n";
