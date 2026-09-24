@@ -37,7 +37,9 @@ SpotifyAuth::SpotifyAuth(const QString &tokenFile, QObject *parent) : QObject(pa
             finishWaiting(true);
     });
     connect(m_flow, &QAbstractOAuth::granted, this, &SpotifyAuth::onGranted);
-    connect(m_flow, &QAbstractOAuth::requestFailed, this, [this](QAbstractOAuth::Error) { onFailed(false); });
+    connect(m_flow, &QAbstractOAuth::requestFailed, this, [this](QAbstractOAuth::Error error) {
+        onFailed(error == QAbstractOAuth::Error::ServerError);
+    });
     connect(m_flow, &QAbstractOAuth2::serverReportedErrorOccurred, this,
             [this](const QString &error, const QString &, const QUrl &) {
         onFailed(error == "invalid_grant"_L1 || error == "invalid_client"_L1);
