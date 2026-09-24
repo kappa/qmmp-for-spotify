@@ -5,3 +5,4 @@ function(spotify_test name)
 endfunction()
 
 spotify_test(tst_spotifylink)
+spotify_test(tst_spotifyjson)
