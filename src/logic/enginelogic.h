@@ -12,7 +12,7 @@ class EngineSink
 {
 public:
     virtual ~EngineSink() = default;
-    virtual void apiPlay(const QString &uri, qint64 positionMs) = 0;
+    virtual void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) = 0;
     virtual void apiPause() = 0;
     virtual void apiResume() = 0;
     virtual void apiSeek(qint64 positionMs) = 0;
@@ -28,6 +28,8 @@ class EngineLogic
 public:
     using Clock = std::function<qint64()>;
 
+    static constexpr qint64 kStartTimeoutMs = 10000;
+
     EngineLogic(EngineSink *sink, Clock clock);
 
     void setSelectedDevice(const QString &deviceId);
@@ -36,8 +38,10 @@ public:
     void pause();
     void seek(qint64 positionMs);
     void stop();
+    void flushPendingPause();
     void updateState(const PlayerState &state);
-    void playFailed(const QString &message, bool fatal);
+    void playFailed(quint64 generation, const QString &message);
+    void checkStartTimeout();
 
     EngineState state() const { return m_state; }
     qint64 elapsed() const;
@@ -56,7 +60,9 @@ private:
 
     void setState(EngineState state);
     void apply(const PlayerState &state);
-    void switchToNext(bool startOnDevice);
+    void startOnDevice(qint64 positionMs);
+    void fail(const QString &message);
+    void switchToNext(bool startNow);
     void finish();
     bool nearEnd() const;
     bool inCommandGrace() const;
@@ -76,6 +82,11 @@ private:
     qint64 m_progressMs = 0;
     qint64 m_progressAt = 0;
     qint64 m_commandAt = -1;
+    bool m_pendingPause = false;
+    QString m_stoppedId;
+    quint64 m_generation = 0;
+    quint64 m_activeGeneration = 0;
+    qint64 m_playSentAt = 0;
 };
 
 #endif

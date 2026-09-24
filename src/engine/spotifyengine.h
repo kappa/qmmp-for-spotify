@@ -23,7 +23,7 @@ public:
     void pause() override;
 
 private:
-    void apiPlay(const QString &uri, qint64 positionMs) override;
+    void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) override;
     void apiPause() override;
     void apiResume() override;
     void apiSeek(qint64 positionMs) override;

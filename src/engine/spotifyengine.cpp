@@ -25,6 +25,7 @@ SpotifyEngine::SpotifyEngine(QObject *parent)
 
 SpotifyEngine::~SpotifyEngine()
 {
+    m_logic.flushPendingPause();
     m_client->setEngineTracks({}, false);
 }
 
@@ -53,6 +54,8 @@ void SpotifyEngine::stop()
 {
     m_logic.stop();
     publishTracks();
+    // a play() in the same call stack (restart, Next, double-click) cancels the pause
+    QTimer::singleShot(0, this, [this] { m_logic.flushPendingPause(); });
 }
 
 void SpotifyEngine::pause()
@@ -60,17 +63,22 @@ void SpotifyEngine::pause()
     m_logic.pause();
 }
 
-void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs)
+void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 generation)
 {
     QPointer<SpotifyEngine> self(this);
     SpotifyClient *client = m_client;
-    m_client->api()->play(m_client->deviceId(), { uri }, positionMs, [self, client](const ApiResult &result) {
+    m_client->api()->play(m_client->deviceId(), { uri }, positionMs, [self, client, generation](const ApiResult &result) {
         client->poller()->pollSoon();
         if(self && !result.ok)
         {
-            self->m_logic.playFailed(result.message, result.deviceProblem);
+            self->m_logic.playFailed(generation, result.message);
             self->publishTracks();
         }
+    });
+    // precise timers never fire early; the margin absorbs millisecond rounding of the clock
+    QTimer::singleShot(EngineLogic::kStartTimeoutMs + 50, Qt::PreciseTimer, this, [this] {
+        m_logic.checkStartTimeout();
+        publishTracks();
     });
 }
 

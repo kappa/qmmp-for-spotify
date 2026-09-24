@@ -9,8 +9,14 @@ class FakeSink : public EngineSink
 {
 public:
     QStringList calls;
+    quint64 lastGeneration = 0;
+    QString lastError;
 
-    void apiPlay(const QString &uri, qint64 positionMs) override { calls << u"play %1 %2"_s.arg(uri).arg(positionMs); }
+    void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) override
+    {
+        calls << u"play %1 %2"_s.arg(uri).arg(positionMs);
+        lastGeneration = generation;
+    }
     void apiPause() override { calls << u"pause"_s; }
     void apiResume() override { calls << u"resume"_s; }
     void apiSeek(qint64 positionMs) override { calls << u"seek %1"_s.arg(positionMs); }
@@ -22,7 +28,11 @@ public:
     }
     void reportTrack(const QString &path, const SpotifyTrack &track) override { calls << u"track %1 %2"_s.arg(path, track.title); }
     void reportFinished() override { calls << u"finished"_s; }
-    void reportError(const QString &, bool fatal) override { calls << (fatal ? u"fatal"_s : u"error"_s); }
+    void reportError(const QString &message, bool fatal) override
+    {
+        calls << (fatal ? u"fatal"_s : u"error"_s);
+        lastError = message;
+    }
 };
 
 PlayerState deviceState(const QString &device, const QString &trackId, qint64 progressMs, bool isPlaying = true)
@@ -60,6 +70,16 @@ private slots:
     void interpolatesElapsed();
     void playFailureClearsTracks();
     void newTrackReportsWithinStaleCommandGrace();
+    void restartPlaysFromStartWithoutPause();
+    void restartWhilePausedPlaysFromStart();
+    void nextSendsNoPause();
+    void stopPausesRightAfterLocalResume();
+    void stopDoesNotPausePausedDevice();
+    void adoptsAfterStopWasFlushed();
+    void ignoresFailureAfterStop();
+    void ignoresFailureOfSupersededPlay();
+    void failsWhenDeviceDoesNotStart();
+    void startTimeoutIgnoredOnceStarted();
 
 private:
     void startPlaying(const QString &trackId);
@@ -177,7 +197,10 @@ void TestEngineLogic::stopPausesOwnTrack()
 {
     startPlaying(u"a"_s);
     m_logic->stop();
-    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"state Stopped"_s }));
+    QCOMPARE(m_sink.calls, QStringList { u"state Stopped"_s });
+    m_logic->flushPendingPause();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"pause"_s }));
 }
 
 void TestEngineLogic::stopLeavesForeignTrackAlone()
@@ -185,6 +208,7 @@ void TestEngineLogic::stopLeavesForeignTrackAlone()
     startPlaying(u"a"_s);
     m_logic->updateState(deviceState(u"dev"_s, u"x"_s, 1000));
     m_logic->stop();
+    m_logic->flushPendingPause();
     QCOMPARE(m_sink.calls, QStringList { u"state Stopped"_s });
 }
 
@@ -210,8 +234,9 @@ void TestEngineLogic::playFailureClearsTracks()
 {
     QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
     m_logic->play();
-    m_logic->playFailed(u"gone"_s, false);
-    QCOMPARE(m_sink.calls.last(), u"error"_s);
+    m_logic->playFailed(m_sink.lastGeneration, u"gone"_s);
+    QCOMPARE(m_sink.calls.last(), u"fatal"_s);
+    QCOMPARE(m_sink.lastError, u"gone"_s);
     QVERIFY(m_logic->trackIds().isEmpty());
     QVERIFY(!m_logic->isAwaitingStart());
 }
@@ -228,6 +253,127 @@ void TestEngineLogic::newTrackReportsWithinStaleCommandGrace()
     m_sink.calls.clear();
     m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 300));
     QCOMPARE(m_sink.calls, (QStringList { u"state Playing"_s, u"track spotify://track/b Title b"_s }));
+    QCOMPARE(m_logic->state(), EngineState::Playing);
+}
+
+void TestEngineLogic::restartPlaysFromStartWithoutPause()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"state Buffering"_s, u"play spotify:track:a 0"_s }));
+}
+
+void TestEngineLogic::restartWhilePausedPlaysFromStart()
+{
+    startPlaying(u"a"_s);
+    m_logic->pause();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"state Paused"_s, u"state Stopped"_s, u"state Buffering"_s,
+                                          u"play spotify:track:a 0"_s }));
+}
+
+void TestEngineLogic::nextSendsNoPause()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"state Buffering"_s, u"play spotify:track:b 0"_s }));
+}
+
+void TestEngineLogic::stopPausesRightAfterLocalResume()
+{
+    startPlaying(u"a"_s);
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 8000, false));
+    m_logic->pause();
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Paused"_s, u"resume"_s, u"state Playing"_s, u"state Stopped"_s, u"pause"_s }));
+}
+
+void TestEngineLogic::stopDoesNotPausePausedDevice()
+{
+    startPlaying(u"a"_s);
+    m_logic->pause();
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"state Paused"_s, u"state Stopped"_s }));
+}
+
+void TestEngineLogic::adoptsAfterStopWasFlushed()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 4000));
+    m_sink.calls.clear();
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Playing"_s, u"track spotify://track/a Title a"_s }));
+}
+
+void TestEngineLogic::ignoresFailureAfterStop()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    const quint64 generation = m_sink.lastGeneration;
+    m_logic->stop();
+    m_sink.calls.clear();
+    m_logic->playFailed(generation, u"late"_s);
+    QVERIFY(m_sink.calls.isEmpty());
+}
+
+void TestEngineLogic::ignoresFailureOfSupersededPlay()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    const quint64 first = m_sink.lastGeneration;
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    const quint64 second = m_sink.lastGeneration;
+    QVERIFY(first != second);
+    m_sink.calls.clear();
+    m_logic->playFailed(first, u"late"_s);
+    QVERIFY(m_sink.calls.isEmpty());
+    QCOMPARE(m_logic->trackIds(), QStringList { u"b"_s });
+    m_logic->playFailed(second, u"now"_s);
+    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+void TestEngineLogic::failsWhenDeviceDoesNotStart()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_sink.calls.clear();
+    m_now += EngineLogic::kStartTimeoutMs - 1;
+    m_logic->checkStartTimeout();
+    QVERIFY(m_sink.calls.isEmpty());
+    m_now += 1;
+    m_logic->checkStartTimeout();
+    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QCOMPARE(m_sink.lastError, u"Spotify: the device did not start playing"_s);
+    QVERIFY(!m_logic->isAwaitingStart());
+    QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+void TestEngineLogic::startTimeoutIgnoredOnceStarted()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 300));
+    m_sink.calls.clear();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    QVERIFY(m_sink.calls.isEmpty());
     QCOMPARE(m_logic->state(), EngineState::Playing);
 }
 

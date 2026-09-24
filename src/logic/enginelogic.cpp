@@ -51,6 +51,10 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
 
 void EngineLogic::play()
 {
+    // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
+    m_pendingPause = false;
+    const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
+    m_stoppedId.clear();
     if(m_current.isEmpty())
         return;
     if(m_device.isEmpty())
@@ -62,16 +66,16 @@ void EngineLogic::play()
     }
     m_trackReported = false;
     m_commandAt = -1;
-    if(m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
+    m_activeGeneration = 0;
+    if(!restart && m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
     {
         apply(m_last);
         return;
     }
-    m_awaiting = true;
     m_progressMs = m_current.offsetMs;
     m_progressAt = m_clock();
     setState(EngineState::Buffering);
-    m_sink->apiPlay(trackUri(m_current.id), m_current.offsetMs);
+    startOnDevice(m_current.offsetMs);
 }
 
 void EngineLogic::pause()
@@ -105,8 +109,11 @@ void EngineLogic::seek(qint64 positionMs)
 
 void EngineLogic::stop()
 {
-    if(!m_current.isEmpty() && (m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack() && m_last.isPlaying)))
-        m_sink->apiPause();
+    // m_state is our belief; m_last may predate a resume we just sent. A paused device is left alone (403).
+    const bool active = m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack());
+    m_pendingPause = !m_current.isEmpty() && active;
+    m_stoppedId = m_current.id;
+    m_activeGeneration = 0;
     m_current = Entry();
     m_next = Entry();
     m_nextQueued = false;
@@ -142,15 +149,26 @@ void EngineLogic::updateState(const PlayerState &state)
         finish();
 }
 
-void EngineLogic::playFailed(const QString &message, bool fatal)
+void EngineLogic::flushPendingPause()
 {
-    m_current = Entry();
-    m_next = Entry();
-    m_nextQueued = false;
-    m_awaiting = false;
-    m_trackReported = false;
-    m_state = EngineState::Stopped;
-    m_sink->reportError(message, fatal);
+    m_stoppedId.clear();
+    if(!m_pendingPause)
+        return;
+    m_pendingPause = false;
+    m_sink->apiPause();
+}
+
+void EngineLogic::playFailed(quint64 generation, const QString &message)
+{
+    if(generation == 0 || generation != m_activeGeneration)
+        return;
+    fail(message);
+}
+
+void EngineLogic::checkStartTimeout()
+{
+    if(m_awaiting && m_activeGeneration != 0 && m_clock() - m_playSentAt >= kStartTimeoutMs)
+        fail(u"Spotify: the device did not start playing"_s);
 }
 
 qint64 EngineLogic::elapsed() const
@@ -203,7 +221,28 @@ void EngineLogic::apply(const PlayerState &state)
     }
 }
 
-void EngineLogic::switchToNext(bool startOnDevice)
+void EngineLogic::startOnDevice(qint64 positionMs)
+{
+    m_awaiting = true;
+    m_activeGeneration = ++m_generation;
+    m_playSentAt = m_clock();
+    m_sink->apiPlay(trackUri(m_current.id), positionMs, m_activeGeneration);
+}
+
+// every play failure is fatal: qmmp stops instead of trying each following track
+void EngineLogic::fail(const QString &message)
+{
+    m_current = Entry();
+    m_next = Entry();
+    m_nextQueued = false;
+    m_awaiting = false;
+    m_trackReported = false;
+    m_activeGeneration = 0;
+    m_state = EngineState::Stopped;
+    m_sink->reportError(message, true);
+}
+
+void EngineLogic::switchToNext(bool startNow)
 {
     m_sink->reportFinished();
     m_sink->reportState(EngineState::Stopped);
@@ -217,11 +256,8 @@ void EngineLogic::switchToNext(bool startOnDevice)
     m_commandAt = -1;
     m_state = EngineState::Buffering;
     m_sink->reportState(EngineState::Buffering);
-    if(startOnDevice)
-    {
-        m_awaiting = true;
-        m_sink->apiPlay(trackUri(m_current.id), 0);
-    }
+    if(startNow)
+        startOnDevice(0);
 }
 
 void EngineLogic::finish()
