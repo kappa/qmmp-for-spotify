@@ -4,6 +4,12 @@
 
 using namespace Qt::StringLiterals;
 
+namespace {
+
+const int kMaxRetryAfterSeconds = 10;
+
+}
+
 ApiDecision classifyReply(int httpStatus, const QString &networkError, const QByteArray &retryAfter,
                           const QByteArray &body, bool retried)
 {
@@ -27,6 +33,12 @@ ApiDecision classifyReply(int httpStatus, const QString &networkError, const QBy
     {
         bool ok = false;
         const int seconds = retryAfter.trimmed().toInt(&ok);
+        // a long wait would leave a user command hanging silently
+        if(ok && seconds > kMaxRetryAfterSeconds)
+        {
+            decision.message = u"Spotify: rate limited, try again in %1 min"_s.arg((seconds + 59) / 60);
+            return decision;
+        }
         decision.action = ApiDecision::RetryAfter;
         decision.retryAfterMs = (ok && seconds >= 0 ? seconds : 5) * 1000;
         return decision;

@@ -10,6 +10,7 @@ private slots:
     void success();
     void unauthorizedRefreshesOnce();
     void rateLimitHonoursRetryAfter();
+    void longRateLimitFailsFast();
     void noActiveDevice();
     void passesSpotifyMessage();
     void networkError();
@@ -35,6 +36,15 @@ void TestApiPolicy::rateLimitHonoursRetryAfter()
     QCOMPARE(withHeader.retryAfterMs, 3000);
     QCOMPARE(classifyReply(429, QString(), QByteArray(), QByteArray(), false).retryAfterMs, 5000);
     QCOMPARE(classifyReply(429, QString(), "3", QByteArray(), true).action, ApiDecision::Fail);
+}
+
+void TestApiPolicy::longRateLimitFailsFast()
+{
+    QCOMPARE(classifyReply(429, QString(), "10", QByteArray(), false).action, ApiDecision::RetryAfter);
+    const ApiDecision minute = classifyReply(429, QString(), "11", QByteArray(), false);
+    QCOMPARE(minute.action, ApiDecision::Fail);
+    QCOMPARE(minute.message, u"Spotify: rate limited, try again in 1 min"_s);
+    QCOMPARE(classifyReply(429, QString(), "121", QByteArray(), false).message, u"Spotify: rate limited, try again in 3 min"_s);
 }
 
 void TestApiPolicy::noActiveDevice()
