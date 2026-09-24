@@ -5,6 +5,8 @@ add_library(spotifygeneral MODULE
     devicedialog.cpp
     trackbuilder.cpp
     playlistdialog.cpp
+    follower.cpp
+    linkexpander.cpp
 )
 target_link_libraries(spotifygeneral PRIVATE qmmp-spotify-core PkgConfig::QMMP Qt6::Widgets)
 set_target_properties(spotifygeneral PROPERTIES OUTPUT_NAME spotify INSTALL_RPATH "$ORIGIN/..")

@@ -4,6 +4,8 @@
 #include <qmmpui/playlistmodel.h>
 #include <qmmpui/uihelper.h>
 #include "devicedialog.h"
+#include "follower.h"
+#include "linkexpander.h"
 #include "playlistdialog.h"
 #include "spotifyapi.h"
 #include "spotifyauth.h"
@@ -21,6 +23,9 @@ SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
     m_menu->addAction(tr("Load Playlist…"), this, &SpotifyGeneral::loadPlaylist);
     m_menu->addAction(tr("Load Liked Songs"), this, &SpotifyGeneral::loadLikedSongs);
     UiHelper::instance()->addAction(m_menu->menuAction(), UiHelper::TOOLS_MENU);
+
+    new Follower(this);
+    new LinkExpander(this);
 }
 
 SpotifyGeneral::~SpotifyGeneral()
