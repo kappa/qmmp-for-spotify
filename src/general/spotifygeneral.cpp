@@ -78,7 +78,7 @@ void SpotifyGeneral::loadPlaylist()
         if(!result.ok)
             SpotifyClient::instance()->notify(result.message);
         else
-            self->fillPlayList(name, tracks);
+            self->fillPlayList(tr("Spotify: %1").arg(name), tracks);
     });
 }
 

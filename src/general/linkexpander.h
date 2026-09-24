@@ -19,7 +19,8 @@ public:
 private:
     void watch(PlayListModel *model);
     void onTracksAdded(PlayListModel *model, const QList<PlayListTrack *> &tracks);
-    void replace(QPointer<PlayListModel> model, PlayListTrack *track, const QString &rawPath, const ApiResult &result,
+    // static: the expander is recreated when settings are accepted, while requests are still in flight
+    static void replace(QPointer<PlayListModel> model, PlayListTrack *track, const QString &rawPath, const ApiResult &result,
                  const QList<SpotifyTrack> &tracks);
 };
 

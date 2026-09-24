@@ -34,7 +34,7 @@ void LinkExpander::onTracksAdded(PlayListModel *model, const QList<PlayListTrack
             continue;
         const SpotifyLink link = SpotifyLink::parse(track->path());
         const QString rawPath = track->path();
-        auto done = [this, guarded, track, rawPath](const ApiResult &result, const QList<SpotifyTrack> &expanded) {
+        auto done = [guarded, track, rawPath](const ApiResult &result, const QList<SpotifyTrack> &expanded) {
             replace(guarded, track, rawPath, result, expanded);
         };
         if(link.kind == SpotifyLink::Track)
