@@ -86,6 +86,12 @@ void SpotifyAuth::login()
         emit loginFailed(u"Spotify: set the client ID first"_s);
         return;
     }
+    if(m_listener)
+    {
+        m_listener->close();
+        m_listener->deleteLater();
+        m_listener = nullptr;
+    }
     auto *listener = new QOAuthHttpServerReplyHandler(QHostAddress::LocalHost, m_port, this);
     if(!listener->isListening())
     {
@@ -98,8 +104,6 @@ void SpotifyAuth::login()
     listener->setCallbackText(u"Spotify login complete. You can close this tab."_s);
     qInfo("Spotify redirect URI: %s", qPrintable(listener->callback()));
     m_flow->setReplyHandler(listener);
-    if(m_listener)
-        m_listener->deleteLater();
     m_listener = listener;
     m_loggingIn = true;
     m_flow->grant();

@@ -38,11 +38,15 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
     m_poller->setSelectedDevice(deviceId());
     m_poller->setEnabled(m_auth->hasCredentials());
 
-    connect(m_auth, &SpotifyAuth::loggedIn, this, [this] { m_poller->setEnabled(true); });
+    connect(m_auth, &SpotifyAuth::loggedIn, this, [this] {
+        m_poller->setEnabled(true);
+        notify(u"Logged in to Spotify"_s);
+    });
     connect(m_auth, &SpotifyAuth::loggedOut, this, [this](const QString &reason) {
         m_poller->setEnabled(false);
         notify(reason);
     });
+    connect(m_auth, &SpotifyAuth::loginFailed, this, [this](const QString &message) { notify(message); });
 }
 
 QString SpotifyClient::clientId() const
