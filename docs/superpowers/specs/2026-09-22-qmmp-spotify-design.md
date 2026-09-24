@@ -115,7 +115,7 @@ progress, timestamp.
 
 - **Tools → Spotify** menu:
   - *Device…* — list of devices with refresh; selecting stores the device id.
-  - *Load playlist…* — list of my playlists; loading fills a qmmp playlist named after it.
+  - *Load playlist…* — list of my playlists; loading fills a qmmp playlist named "Spotify: <playlist name>" (never a local playlist of the plain name).
   - *Load liked songs* — fills qmmp playlist "Spotify: Liked Songs".
   - Re-loading clears and refills the same-named qmmp playlist.
 - **Settings dialog**: client id, redirect port (default 8898), the exact redirect URI
@@ -180,4 +180,9 @@ volume control (possible later via `PUT /me/player/volume`).
 - The follower is edge-triggered: it acts only when the selected device switches track or starts playing compared with the previous poll. qmmp therefore does not take over playback at startup if the device is already playing, and a stale poll after Stop cannot restart playback.
 - Login success and failure are reported through the plugin's notices, so the outcome is shown even if the settings dialog was closed; a new login releases any pending callback listener first.
 - On Qt 6.11 a rejected token refresh arrives only as requestFailed(ServerError); that logs the user out (a transient 5xx does too), network errors do not.
+- Device problems and all other play failures dispatch `FatalError`, not `NormalError`: qmmp stops with the notice instead of trying every following track of the playlist (e.g. when logged out on a long playlist). Failures of a play that was already superseded or stopped are ignored.
+- If the device has not started the requested track 10 s after `play`, playback fails with "Spotify: the device did not start playing" (`FatalError`).
+- `stop()` defers its pause to the next event-loop turn; a `play()` in the same call stack (Next, Previous, double-click, restart) cancels it, so no pause/play race reaches the device. Replaying the track that was just stopped sends play from 0 instead of adopting the device's playback. Stop pauses whenever qmmp believes it is playing its track on the device; a paused device is left alone.
+- Loaded Spotify playlists are named "Spotify: <playlist name>"; only such playlists are reused and refilled.
+- A 429 with `Retry-After` above 10 s fails at once with "Spotify: rate limited, try again in N min" instead of waiting.
 - Known limitation kept: Spotify queue items cannot be removed, so skipping in the last ~7 s of a track can make the device play the next track twice.
