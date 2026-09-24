@@ -19,7 +19,7 @@ public:
 private:
     void watch(PlayListModel *model);
     void onTracksAdded(PlayListModel *model, const QList<PlayListTrack *> &tracks);
-    void replace(QPointer<PlayListModel> model, PlayListTrack *track, const ApiResult &result,
+    void replace(QPointer<PlayListModel> model, PlayListTrack *track, const QString &rawPath, const ApiResult &result,
                  const QList<SpotifyTrack> &tracks);
 };
 

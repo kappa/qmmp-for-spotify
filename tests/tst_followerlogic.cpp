@@ -30,6 +30,10 @@ private slots:
     void selectsEarlierOccurrence();
     void appendsMissingTrack();
     void expansion();
+    void triggerIgnoresSameTrackStillPlaying();
+    void triggerFiresOnTrackChange();
+    void triggerFiresOnResume();
+    void triggerIgnoresOtherDevice();
 };
 
 void TestFollowerLogic::ignoresWhileEngineAwaiting()
@@ -75,6 +79,26 @@ void TestFollowerLogic::expansion()
     QVERIFY(needsExpansion(u"spotify://track/abc"_s, QString()));
     QVERIFY(!needsExpansion(u"spotify://track/abc"_s, u"Song"_s));
     QVERIFY(!needsExpansion(u"/music/a.mp3"_s, QString()));
+}
+
+void TestFollowerLogic::triggerIgnoresSameTrackStillPlaying()
+{
+    QVERIFY(!isFollowTrigger(playing(u"dev"_s, u"x"_s), playing(u"dev"_s, u"x"_s), u"dev"_s));
+}
+
+void TestFollowerLogic::triggerFiresOnTrackChange()
+{
+    QVERIFY(isFollowTrigger(playing(u"dev"_s, u"y"_s), playing(u"dev"_s, u"x"_s), u"dev"_s));
+}
+
+void TestFollowerLogic::triggerFiresOnResume()
+{
+    QVERIFY(isFollowTrigger(playing(u"dev"_s, u"x"_s, false), playing(u"dev"_s, u"x"_s), u"dev"_s));
+}
+
+void TestFollowerLogic::triggerIgnoresOtherDevice()
+{
+    QVERIFY(!isFollowTrigger(playing(u"dev"_s, u"x"_s), playing(u"phone"_s, u"y"_s), u"dev"_s));
 }
 
 QTEST_APPLESS_MAIN(TestFollowerLogic)

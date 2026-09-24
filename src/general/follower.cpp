@@ -16,6 +16,18 @@ Follower::Follower(QObject *parent) : QObject(parent)
 void Follower::onState(const PlayerState &state)
 {
     SpotifyClient *client = SpotifyClient::instance();
+
+    if(!m_hasBaseline)
+    {
+        m_hasBaseline = true;
+        m_previous = state;
+        return;
+    }
+    const PlayerState previous = m_previous;
+    m_previous = state;
+    if(!isFollowTrigger(previous, state, client->deviceId()))
+        return;
+
     PlayListModel *model = PlayListManager::instance()->currentPlayList();
     if(!model)
         return;

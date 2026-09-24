@@ -24,3 +24,10 @@ bool needsExpansion(const QString &path, const QString &title)
         return false;
     return link.kind != SpotifyLink::Track || path != link.path() || title.isEmpty();
 }
+
+bool isFollowTrigger(const PlayerState &previous, const PlayerState &current, const QString &selectedDevice)
+{
+    if(!current.hasPlayback || !current.isPlaying || current.deviceId != selectedDevice || !current.track.isValid())
+        return false;
+    return previous.deviceId != selectedDevice || previous.track.id != current.track.id || !previous.isPlaying;
+}

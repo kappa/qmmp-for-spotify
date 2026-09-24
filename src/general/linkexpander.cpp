@@ -33,8 +33,9 @@ void LinkExpander::onTracksAdded(PlayListModel *model, const QList<PlayListTrack
         if(!needsExpansion(track->path(), track->value(Qmmp::TITLE)))
             continue;
         const SpotifyLink link = SpotifyLink::parse(track->path());
-        auto done = [this, guarded, track](const ApiResult &result, const QList<SpotifyTrack> &expanded) {
-            replace(guarded, track, result, expanded);
+        const QString rawPath = track->path();
+        auto done = [this, guarded, track, rawPath](const ApiResult &result, const QList<SpotifyTrack> &expanded) {
+            replace(guarded, track, rawPath, result, expanded);
         };
         if(link.kind == SpotifyLink::Track)
             api->track(link.id, [done](const ApiResult &result, const SpotifyTrack &expanded) {
@@ -47,8 +48,8 @@ void LinkExpander::onTracksAdded(PlayListModel *model, const QList<PlayListTrack
     }
 }
 
-void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, const ApiResult &result,
-                           const QList<SpotifyTrack> &tracks)
+void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, const QString &rawPath,
+                           const ApiResult &result, const QList<SpotifyTrack> &tracks)
 {
     if(!model)
         return;
@@ -57,9 +58,26 @@ void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, 
         SpotifyClient::instance()->notify(result.message);
         return;
     }
-    const int index = model->indexOf(track);
+    // track may have been deleted (or its address reused) while the request was in flight;
+    // only trust it once we find it still live in the model, at the path we captured before asking.
+    PlayListTrack *live = nullptr;
+    for(int i = 0; i < model->trackCount(); ++i)
+    {
+        PlayListTrack *candidate = model->findTrack(i);
+        if(candidate == track && candidate->path() == rawPath)
+        {
+            live = candidate;
+            break;
+        }
+    }
+    if(!live)
+        return;
+    const int index = model->indexOf(live);
     if(index < 0)
         return;
-    model->insertTracks(index, createPlayListTracks(tracks));
-    model->removeTrack(track);
+    const QList<PlayListTrack *> inserted = createPlayListTracks(tracks);
+    model->insertTracks(index, inserted);
+    if(!inserted.isEmpty() && model->currentTrack() == live)
+        model->setCurrent(inserted.first());
+    model->removeTrack(live);
 }

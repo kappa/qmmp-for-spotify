@@ -13,6 +13,9 @@ public:
 
 private:
     void onState(const PlayerState &state);
+
+    PlayerState m_previous;
+    bool m_hasBaseline = false;
 };
 
 #endif
