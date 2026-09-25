@@ -49,16 +49,39 @@ for A was cancelled, so A keeps playing on the device and qmmp's Stop cannot pau
 generation and send it in `EngineLogic::fail()` when the device still plays A; add tests
 for the failure and the timeout path.
 
-## Skinned UI: Tools menu missing
-
-With the skinned UI, the main menu shows no Tools entry although the Spotify plugin is
-loaded; the Simple UI shows Tools → Spotify correctly. Unexplained: `UiHelper` hides the
-Tools submenu while it has no actions. Observed after enabling the plugin while qmmp was
-running and accepting its settings; not yet checked after a clean restart.
-
 ## Stale queue entry replays a track
 
 Spotify queue items cannot be removed through the Web API. Skipping or stopping in the
 last ~7 s of a track leaves the queued next track on the device, which may then play it
 twice. Accepted by the spec; options if it bites: skip the stale entry with
 `POST /me/player/next`, or drop queueing and start the next track explicitly (short gap).
+
+## Double-click on the current track does nothing (low priority)
+
+Double-clicking the track that is playing should behave like double-clicking any other
+track: start it from the beginning. It does nothing in the Simple UI. The Play button
+does restart it.
+
+Cause (traced 2026-09-24): qsui's double-click calls `MediaPlayer::stop()` then `play()`
+(`qsuilistwidget.cpp:278-280`), and `SoundCore::play()` calls stop again, so the engine
+sees stop → stop → play. The second `EngineLogic::stop()` has no current track and
+overwrites the first one's restart candidate and pending pause
+(`src/logic/enginelogic.cpp:114-115`); `play()` then adopts the still-playing track and
+sends nothing.
+Fix: make `stop()` a no-op when there is no current track; tests for stop → stop → play of
+the same track (expects play from 0) and for a double stop still pausing the device.
+
+## Crash on quit
+
+qmmp segfaults on every quit with the plugin loaded: `~SpotifyGeneral` calls
+`UiHelper::instance()->removeAction(...)` after UiHelper is destroyed
+(`src/general/spotifygeneral.cpp:33`, confirmed in gdb). Fix: drop the call — UiHelper
+already removes the action when it is destroyed (`uihelper.cpp:133`).
+
+## qmmp Settings → Cancel undoes enabling the plugin
+
+Closing qmmp's Settings dialog with Cancel/Esc reverts plugin checkbox changes even after
+the plugin's Preferences were accepted (`qmmpui/configdialog.cpp:543`). The plugin is
+unloaded; the skinned UI then hides the empty Tools menu (the Simple UI shows it empty).
+qmmp behaviour, not ours. Fix: a note in our settings dialog and the README — press OK in
+qmmp's Settings after enabling the plugin.
