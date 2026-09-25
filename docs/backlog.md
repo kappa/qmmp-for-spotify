@@ -44,13 +44,22 @@ Agreed direction (2026-09-24):
 - Caveats: qmmp has one volume, so it carries over to local files; some devices reject
   remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
 
-## Failed track change leaves the old track playing
+## Unavailable tracks: show them, skip them on play (wanted)
 
-Next/double-click from track A to B, where B's play fails or times out: the pending pause
-for A was cancelled, so A keeps playing on the device and qmmp's Stop cannot pause it
-(the engine no longer owns a track). Fix: remember the cancelled pause for that play
-generation and send it in `EngineLogic::fail()` when the device still plays A; add tests
-for the failure and the timeout path.
+Alex (2026-09-24): show all songs in loaded playlists, even unplayable ones, but never stop
+on them — skip to the next track, as Spotify does.
+- Today every play failure stops qmmp (ruling from the final review, made to stop qmmp
+  walking a whole playlist on errors that affect every track). Split the errors instead:
+  track-specific (unavailable, removed) → skip to the next track; systemic (not logged in,
+  device gone, no network, Premium required, rate limited) → stop with a notice.
+- Loading: `parseTrack` currently drops tracks with `is_playable: false`; keep them
+  (optionally marked) instead.
+- Verify first with the CLI: whether `market` on playlist/liked-songs requests still makes
+  Development Mode return `is_playable` / `restrictions` (documented on Get Playlist Items;
+  not mentioned in the Feb 2026 migration guide).
+- Related, from the final code review: when a track change fails on a systemic error, the
+  previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
+  pause was cancelled). Pause the device on that path.
 
 ## Stale queue entry replays a track
 
