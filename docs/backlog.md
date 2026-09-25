@@ -3,7 +3,56 @@
 Open items found during implementation, review and manual testing. Each needs its own
 short design check before implementation.
 
-## Play Spotify-sourced playlists as Spotify contexts (wanted, needs a design round)
+## High priority
+
+### Volume control (needed)
+
+qmmp's volume slider does nothing for Spotify playback: it drives qmmp's local output,
+which the Spotify engine does not use.
+
+Agreed direction (2026-09-24):
+- qmmp → device: while the Spotify engine is active, listen to `SoundCore::volumeChanged`
+  and `mutedChanged`; send `PUT /me/player/volume?volume_percent=N&device_id=…`,
+  debounced (~300 ms). Mute sends 0, unmute restores the previous level.
+- Device → qmmp: the polled player state carries `device.volume_percent`; when it changes
+  on the device (e.g. from the phone), set qmmp's volume. Ignore echoes of our own changes.
+- Debounce, echo suppression and mute handling as a pure, unit-tested unit in `src/logic`;
+  the engine only wires it.
+- Caveats: qmmp has one volume, so it carries over to local files; some devices reject
+  remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
+
+### qmmp Settings → Cancel undoes enabling the plugin
+
+Closing qmmp's Settings dialog with Cancel/Esc reverts plugin checkbox changes even after
+the plugin's Preferences were accepted (`qmmpui/configdialog.cpp:543`). The plugin is
+unloaded; the skinned UI then hides the empty Tools menu (the Simple UI shows it empty).
+qmmp behaviour, not ours. Fix: a note in our settings dialog and the README — press OK in
+qmmp's Settings after enabling the plugin.
+
+### Crash on quit
+
+qmmp segfaults on every quit with the plugin loaded: `~SpotifyGeneral` calls
+`UiHelper::instance()->removeAction(...)` after UiHelper is destroyed
+(`src/general/spotifygeneral.cpp:33`, confirmed in gdb). Fix: drop the call — UiHelper
+already removes the action when it is destroyed (`uihelper.cpp:133`).
+
+### Stale queue entry replays a track
+
+Spotify queue items cannot be removed through the Web API. qmmp announces the next track
+~7 s before the end and the engine queues it at once; acting in that window (Next, pick
+another track, Stop) leaves the queued track on the device, which then plays it once more.
+Found by code review, not seen in testing.
+Decision (2026-09-24): **queue late** for custom playlists; context mode for Spotify-sourced
+ones. Options considered ("skip the leftover when it starts" rejected as ugly and brittle):
+- No queue: the engine starts the next track itself exactly at the end of the current
+  one — never stale, but a short gap (~0.3–1 s) between tracks.
+- Queue late: hold qmmp's next track and queue it only ~1.5 s before the end — gapless,
+  window shrinks from 7 s to 1.5 s; a slow network can still cause a gap.
+- Context mode makes it irrelevant for Spotify-sourced playlists (nothing is queued).
+
+## Normal priority
+
+### Play Spotify-sourced playlists as Spotify contexts (wanted, needs a design round)
 
 Today qmmp owns the order and feeds the device one track at a time (plus one queued
 track ~7 s before the end). Other Spotify clients instead play a *context* ("Liked Songs
@@ -28,23 +77,7 @@ Direction (2026-09-24):
   Autoplay may continue, qmmp follows it); for custom or edited playlists (track-by-track
   mode) qmmp pauses the device when its playlist ends.
 
-## Volume control (needed)
-
-qmmp's volume slider does nothing for Spotify playback: it drives qmmp's local output,
-which the Spotify engine does not use.
-
-Agreed direction (2026-09-24):
-- qmmp → device: while the Spotify engine is active, listen to `SoundCore::volumeChanged`
-  and `mutedChanged`; send `PUT /me/player/volume?volume_percent=N&device_id=…`,
-  debounced (~300 ms). Mute sends 0, unmute restores the previous level.
-- Device → qmmp: the polled player state carries `device.volume_percent`; when it changes
-  on the device (e.g. from the phone), set qmmp's volume. Ignore echoes of our own changes.
-- Debounce, echo suppression and mute handling as a pure, unit-tested unit in `src/logic`;
-  the engine only wires it.
-- Caveats: qmmp has one volume, so it carries over to local files; some devices reject
-  remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
-
-## Unavailable tracks: show them, skip them on play (wanted)
+### Unavailable tracks: show them, skip them on play (wanted)
 
 Alex (2026-09-24): show all songs in loaded playlists, even unplayable ones, but never stop
 on them — skip to the next track, as Spotify does.
@@ -65,21 +98,7 @@ on them — skip to the next track, as Spotify does.
   previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
   pause was cancelled). Pause the device on that path.
 
-## Stale queue entry replays a track
-
-Spotify queue items cannot be removed through the Web API. qmmp announces the next track
-~7 s before the end and the engine queues it at once; acting in that window (Next, pick
-another track, Stop) leaves the queued track on the device, which then plays it once more.
-Found by code review, not seen in testing.
-Decision (2026-09-24): **queue late** for custom playlists; context mode for Spotify-sourced
-ones. Options considered ("skip the leftover when it starts" rejected as ugly and brittle):
-- No queue: the engine starts the next track itself exactly at the end of the current
-  one — never stale, but a short gap (~0.3–1 s) between tracks.
-- Queue late: hold qmmp's next track and queue it only ~1.5 s before the end — gapless,
-  window shrinks from 7 s to 1.5 s; a slow network can still cause a gap.
-- Context mode makes it irrelevant for Spotify-sourced playlists (nothing is queued).
-
-## Double-click on the current track does nothing (low priority)
+### Double-click on the current track does nothing (low priority)
 
 Double-clicking the track that is playing should behave like double-clicking any other
 track: start it from the beginning. It does nothing in the Simple UI. The Play button
@@ -94,22 +113,7 @@ sends nothing.
 Fix: make `stop()` a no-op when there is no current track; tests for stop → stop → play of
 the same track (expects play from 0) and for a double stop still pausing the device.
 
-## Crash on quit
-
-qmmp segfaults on every quit with the plugin loaded: `~SpotifyGeneral` calls
-`UiHelper::instance()->removeAction(...)` after UiHelper is destroyed
-(`src/general/spotifygeneral.cpp:33`, confirmed in gdb). Fix: drop the call — UiHelper
-already removes the action when it is destroyed (`uihelper.cpp:133`).
-
-## qmmp Settings → Cancel undoes enabling the plugin
-
-Closing qmmp's Settings dialog with Cancel/Esc reverts plugin checkbox changes even after
-the plugin's Preferences were accepted (`qmmpui/configdialog.cpp:543`). The plugin is
-unloaded; the skinned UI then hides the empty Tools menu (the Simple UI shows it empty).
-qmmp behaviour, not ours. Fix: a note in our settings dialog and the README — press OK in
-qmmp's Settings after enabling the plugin.
-
-## Moving from a Spotify track to a local file leaves the device playing
+### Moving from a Spotify track to a local file leaves the device playing
 
 When qmmp leaves a Spotify track for a non-Spotify item, the device must be paused.
 Two paths fail today:
@@ -122,7 +126,7 @@ Two paths fail today:
   and the follower may pull qmmp back to Spotify (predicted, not yet tested).
 Fix: pause the device whenever the engine hands over to another engine; covers both paths.
 
-## Attach to the device's ongoing playback at startup
+### Attach to the device's ongoing playback at startup
 
 After a qmmp restart the login survives, but qmmp does not show what the device is
 already playing until the next track starts: the follower is edge-triggered and treats
@@ -132,7 +136,7 @@ Proposed: the first poll after startup attaches when the selected device is play
 (select or append the current track and show its position). Safe for Stop, since nothing
 has been stopped at startup. Change in `Follower`/`isFollowTrigger` plus a test.
 
-## Adding another user's playlist link leaves the raw link behind
+### Adding another user's playlist link leaves the raw link behind
 
 Add URL with a playlist owned by someone else: Spotify answers "Resource not found"
 (Development Mode cannot read other users' playlists), the notice shows Spotify's raw text,
@@ -141,7 +145,7 @@ keeps the raw entry on failure); it cannot be played. Seen in manual testing 202
 Fix: remove the raw entry when expansion fails; for playlist links answered with 403/404
 say "Spotify doesn't let this app read other users' playlists".
 
-## Closing the device leaves qmmp "playing"
+### Closing the device leaves qmmp "playing"
 
 Manual test 2026-09-24: with a Spotify track playing on the web player, closing the web
 player leaves qmmp in Playing with the position still advancing. Expected: qmmp notices
