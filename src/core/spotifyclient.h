@@ -34,6 +34,10 @@ public:
     void setSuppressedTrack(const QString &id) { m_suppressedTrack = id; }
     QString suppressedTrack() const { return m_suppressedTrack; }
 
+    // true only on the first call in this process: the follower attaches to the device's
+    // playback once at startup, not again when qmmp re-creates the plugin
+    bool takeStartupAttach();
+
     void notify(const QString &message);
 
 signals:
@@ -49,6 +53,7 @@ private:
     QStringList m_engineTrackIds;
     bool m_engineAwaiting = false;
     QString m_suppressedTrack;
+    bool m_startupAttachTaken = false;
     QHash<QString, qint64> m_noticeTimes;
 };
 

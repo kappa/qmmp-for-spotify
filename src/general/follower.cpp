@@ -17,8 +17,18 @@ void Follower::onState(const PlayerState &state)
 {
     SpotifyClient *client = SpotifyClient::instance();
 
-    // the first poll compares against an empty state, so qmmp attaches to what the device
-    // is already playing at startup
+    if(!m_hasBaseline)
+    {
+        m_hasBaseline = true;
+        // at qmmp startup the first poll is compared with an empty state, so qmmp attaches to
+        // what the device is already playing; a follower re-created later (the plugin's
+        // settings were accepted) only takes a baseline
+        if(!client->takeStartupAttach())
+        {
+            m_previous = state;
+            return;
+        }
+    }
     const PlayerState previous = m_previous;
     m_previous = state;
     if(!isFollowTrigger(previous, state, client->deviceId()))

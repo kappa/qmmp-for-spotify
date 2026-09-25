@@ -99,6 +99,13 @@ void SpotifyClient::setEngineTracks(const QStringList &ids, bool awaiting)
     m_poller->setEngineActive(!ids.isEmpty());
 }
 
+bool SpotifyClient::takeStartupAttach()
+{
+    const bool first = !m_startupAttachTaken;
+    m_startupAttachTaken = true;
+    return first;
+}
+
 void SpotifyClient::notify(const QString &message)
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();

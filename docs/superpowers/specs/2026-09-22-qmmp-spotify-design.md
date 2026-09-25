@@ -208,7 +208,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   Spotify track, so Autoplay cannot pull qmmp back.
 - At startup the follower compares the first poll with an empty state, so qmmp attaches to
   what the selected device is already playing (selects or appends the track and shows its
-  position) instead of waiting for the next track change.
+  position) instead of waiting for the next track change. This happens once per qmmp
+  process: a follower re-created after the plugin's settings are accepted only takes a
+  baseline.
 - A link Spotify rejects (HTTP 400, 403 or 404) is removed from the playlist, since it could
   not be played either; after network, login, rate-limit or server errors the link is kept
   (a track link still plays after login or reconnect). A playlist link answered with 403 or 404 shows "Spotify: this app can't read
