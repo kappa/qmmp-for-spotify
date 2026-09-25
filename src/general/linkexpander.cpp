@@ -69,10 +69,11 @@ void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, 
     }
     if(!live)
         return;
-    // a link that could not be expanded cannot be played either
     if(!result.ok)
     {
-        model->removeTrack(live);
+        // a link Spotify rejects cannot be played either
+        if(removesFailedLink(result.status))
+            model->removeTrack(live);
         return;
     }
     const int index = model->indexOf(live);

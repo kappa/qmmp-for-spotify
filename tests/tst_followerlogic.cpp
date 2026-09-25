@@ -34,6 +34,7 @@ private slots:
     void appendsMissingTrack();
     void expansion();
     void expansionFailureMessage();
+    void removesOnlyLinksSpotifyRejects();
     void triggerIgnoresSameTrackStillPlaying();
     void triggerFiresOnTrackChange();
     void triggerFiresOnResume();
@@ -116,6 +117,18 @@ void TestFollowerLogic::expansionFailureMessage()
              u"Spotify: network error: no response"_s);
     QCOMPARE(::expansionFailureMessage(u"spotify://album/abc"_s, 404, u"Spotify: Resource not found"_s),
              u"Spotify: Resource not found"_s);
+}
+
+void TestFollowerLogic::removesOnlyLinksSpotifyRejects()
+{
+    QVERIFY(removesFailedLink(400));
+    QVERIFY(removesFailedLink(403));
+    QVERIFY(removesFailedLink(404));
+    QVERIFY(!removesFailedLink(0));
+    QVERIFY(!removesFailedLink(401));
+    QVERIFY(!removesFailedLink(429));
+    QVERIFY(!removesFailedLink(500));
+    QVERIFY(!removesFailedLink(503));
 }
 
 void TestFollowerLogic::triggerIgnoresSameTrackStillPlaying()

@@ -45,6 +45,11 @@ QString expansionFailureMessage(const QString &path, int httpStatus, const QStri
     return apiMessage;
 }
 
+bool removesFailedLink(int httpStatus)
+{
+    return httpStatus == 400 || httpStatus == 403 || httpStatus == 404;
+}
+
 bool isFollowTrigger(const PlayerState &previous, const PlayerState &current, const QString &selectedDevice)
 {
     if(!current.hasPlayback || !current.isPlaying || current.deviceId != selectedDevice || !current.track.isValid())

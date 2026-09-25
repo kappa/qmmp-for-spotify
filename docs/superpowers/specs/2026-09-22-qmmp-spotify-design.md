@@ -209,8 +209,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 - At startup the follower compares the first poll with an empty state, so qmmp attaches to
   what the selected device is already playing (selects or appends the track and shows its
   position) instead of waiting for the next track change.
-- A link that cannot be expanded is removed from the playlist (it could not be played
-  either). A playlist link answered with 403 or 404 shows "Spotify: this app can't read
+- A link Spotify rejects (HTTP 400, 403 or 404) is removed from the playlist, since it could
+  not be played either; after network, login, rate-limit or server errors the link is kept
+  (a track link still plays after login or reconnect). A playlist link answered with 403 or 404 shows "Spotify: this app can't read
   other users' playlists" (Development Mode apps cannot read playlists owned by others).
 - While qmmp plays a track (not waiting for the device to start, not right after a
   pause/resume/seek, not near the track's end), a poll with no playback on the selected
