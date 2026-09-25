@@ -125,4 +125,5 @@ say "Spotify doesn't let this app read other users' playlists".
 
 Manual test 2026-09-24: with a Spotify track playing on the web player, closing the web
 player leaves qmmp in Playing with the position still advancing. Expected: qmmp notices
-the device is gone (paused/stopped) and shows it. Not yet investigated.
+the device is gone (paused/stopped) and shows it. About 30 s later a notice appears:
+"the selected device is not available". Not yet investigated.
