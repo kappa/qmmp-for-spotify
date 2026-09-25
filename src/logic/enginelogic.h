@@ -42,6 +42,7 @@ public:
     void updateState(const PlayerState &state);
     void playFailed(quint64 generation, const QString &message);
     void checkStartTimeout();
+    void tick();
 
     EngineState state() const { return m_state; }
     qint64 elapsed() const;
@@ -64,6 +65,7 @@ private:
     void fail(const QString &message);
     void switchToNext(bool startNow);
     void finish();
+    void maybeQueueNext();
     bool nearEnd() const;
     bool inCommandGrace() const;
     bool deviceOnCurrentTrack() const;

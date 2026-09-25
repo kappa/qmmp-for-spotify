@@ -20,7 +20,10 @@ SpotifyEngine::SpotifyEngine(QObject *parent)
     });
     connect(m_client, &SpotifyClient::deviceChanged, this, [this] { m_logic.setSelectedDevice(m_client->deviceId()); });
     m_ticker.setInterval(250);
-    connect(&m_ticker, &QTimer::timeout, this, [this] { StateHandler::instance()->dispatch(m_logic.elapsed(), 0); });
+    connect(&m_ticker, &QTimer::timeout, this, [this] {
+        m_logic.tick();
+        StateHandler::instance()->dispatch(m_logic.elapsed(), 0);
+    });
 }
 
 SpotifyEngine::~SpotifyEngine()

@@ -11,6 +11,9 @@ const qint64 kCommandGraceMs = 2500;
 const qint64 kEndWindowMs = 3000;
 // the device rewinds to 0 when a track ends with nothing queued
 const qint64 kRewoundMs = 1500;
+// Spotify queue entries cannot be removed, so hold the next track and queue it only this
+// close to the end
+const qint64 kQueueLeadMs = 1500;
 
 QString trackUri(const QString &id)
 {
@@ -41,11 +44,6 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
     }
     m_next = entry;
     m_nextQueued = false;
-    if(m_state == EngineState::Playing || m_state == EngineState::Paused)
-    {
-        m_sink->apiQueue(trackUri(m_next.id));
-        m_nextQueued = true;
-    }
     return true;
 }
 
@@ -137,16 +135,18 @@ void EngineLogic::updateState(const PlayerState &state)
             finish();
         else
             apply(state);
-        return;
     }
-    if(onDevice && !m_next.isEmpty() && state.track.id == m_next.id)
+    else if(onDevice && !m_next.isEmpty() && state.track.id == m_next.id)
     {
         switchToNext(false);
         apply(state);
-        return;
     }
-    if(!m_awaiting && m_state == EngineState::Playing && nearEnd())
+    else if(!m_awaiting && m_state == EngineState::Playing && nearEnd())
+    {
         finish();
+    }
+    // a poll may arrive inside the queue-lead window
+    maybeQueueNext();
 }
 
 void EngineLogic::flushPendingPause()
@@ -169,6 +169,11 @@ void EngineLogic::checkStartTimeout()
 {
     if(m_awaiting && m_activeGeneration != 0 && m_clock() - m_playSentAt >= kStartTimeoutMs)
         fail(u"Spotify: the device did not start playing"_s);
+}
+
+void EngineLogic::tick()
+{
+    maybeQueueNext();
 }
 
 qint64 EngineLogic::elapsed() const
@@ -213,11 +218,6 @@ void EngineLogic::apply(const PlayerState &state)
     {
         m_trackReported = true;
         m_sink->reportTrack(m_current.path, state.track);
-    }
-    if(!m_next.isEmpty() && !m_nextQueued)
-    {
-        m_sink->apiQueue(trackUri(m_next.id));
-        m_nextQueued = true;
     }
 }
 
@@ -272,6 +272,16 @@ void EngineLogic::finish()
     m_trackReported = false;
     m_sink->reportFinished();
     setState(EngineState::Stopped);
+}
+
+void EngineLogic::maybeQueueNext()
+{
+    if(m_state != EngineState::Playing || m_awaiting || m_next.isEmpty() || m_nextQueued)
+        return;
+    if(m_track.durationMs <= 0 || m_track.durationMs - elapsed() > kQueueLeadMs)
+        return;
+    m_sink->apiQueue(trackUri(m_next.id));
+    m_nextQueued = true;
 }
 
 bool EngineLogic::nearEnd() const

@@ -186,3 +186,4 @@ volume control (possible later via `PUT /me/player/volume`).
 - Loaded Spotify playlists are named "Spotify: <playlist name>"; only such playlists are reused and refilled.
 - A 429 with `Retry-After` above 10 s fails at once with "Spotify: rate limited, try again in N min" instead of waiting.
 - Known limitation kept: Spotify queue items cannot be removed, so skipping in the last ~7 s of a track can make the device play the next track twice.
+- The next track is queued 1.5 s before the end instead of when qmmp announces it (7 s).
