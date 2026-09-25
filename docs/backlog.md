@@ -21,16 +21,6 @@ Agreed direction (2026-09-24):
 - Caveats: qmmp has one volume, so it carries over to local files; some devices reject
   remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
 
-### Skinned UI: Tools menu missing until restart (cause unknown)
-
-Seen by Alex 2026-09-24: enabled the Spotify plugin while qmmp (skinned UI) was running,
-logged in via its Preferences (OK, not Cancel) — the right-click menu had no Tools. After
-restarting qmmp with the plugin enabled, Tools → Spotify shows. The Simple UI showed Tools.
-An isolated investigation could not reproduce the no-Cancel case (it only reproduced the
-symptom when qmmp's Settings dialog was closed with Cancel, which reverts plugin
-enabling — that is not what happened). Needs a fresh look at the enable-at-runtime path in
-the skinned UI (`UiHelper` TOOLS_MENU autoHide, `skinnedmainwindow.cpp:429`).
-
 ### Crash on quit
 
 qmmp segfaults on every quit with the plugin loaded: `~SpotifyGeneral` calls
