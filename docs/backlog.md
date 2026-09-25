@@ -71,7 +71,8 @@ Spotify queue items cannot be removed through the Web API. qmmp announces the ne
 ~7 s before the end and the engine queues it at once; acting in that window (Next, pick
 another track, Stop) leaves the queued track on the device, which then plays it once more.
 Found by code review, not seen in testing.
-Options (2026-09-24; "skip the leftover when it starts" rejected as ugly and brittle):
+Decision (2026-09-24): **queue late** for custom playlists; context mode for Spotify-sourced
+ones. Options considered ("skip the leftover when it starts" rejected as ugly and brittle):
 - No queue: the engine starts the next track itself exactly at the end of the current
   one — never stale, but a short gap (~0.3–1 s) between tracks.
 - Queue late: hold qmmp's next track and queue it only ~1.5 s before the end — gapless,
