@@ -67,10 +67,16 @@ on them — skip to the next track, as Spotify does.
 
 ## Stale queue entry replays a track
 
-Spotify queue items cannot be removed through the Web API. Skipping or stopping in the
-last ~7 s of a track leaves the queued next track on the device, which may then play it
-twice. Accepted by the spec; options if it bites: skip the stale entry with
-`POST /me/player/next`, or drop queueing and start the next track explicitly (short gap).
+Spotify queue items cannot be removed through the Web API. qmmp announces the next track
+~7 s before the end and the engine queues it at once; acting in that window (Next, pick
+another track, Stop) leaves the queued track on the device, which then plays it once more.
+Found by code review, not seen in testing.
+Options (2026-09-24; "skip the leftover when it starts" rejected as ugly and brittle):
+- No queue: the engine starts the next track itself exactly at the end of the current
+  one — never stale, but a short gap (~0.3–1 s) between tracks.
+- Queue late: hold qmmp's next track and queue it only ~1.5 s before the end — gapless,
+  window shrinks from 7 s to 1.5 s; a slow network can still cause a gap.
+- Context mode makes it irrelevant for Spotify-sourced playlists (nothing is queued).
 
 ## Double-click on the current track does nothing (low priority)
 
