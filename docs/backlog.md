@@ -120,3 +120,9 @@ and the unexpanded link stays in the qmmp playlist (`src/general/linkexpander.cp
 keeps the raw entry on failure); it cannot be played. Seen in manual testing 2026-09-24.
 Fix: remove the raw entry when expansion fails; for playlist links answered with 403/404
 say "Spotify doesn't let this app read other users' playlists".
+
+## Closing the device leaves qmmp "playing"
+
+Manual test 2026-09-24: with a Spotify track playing on the web player, closing the web
+player leaves qmmp in Playing with the position still advancing. Expected: qmmp notices
+the device is gone (paused/stopped) and shows it. Not yet investigated.
