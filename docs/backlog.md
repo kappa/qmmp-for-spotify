@@ -26,7 +26,8 @@ Agreed direction (2026-09-24):
 Closing qmmp's Settings dialog with Cancel/Esc reverts plugin checkbox changes even after
 the plugin's Preferences were accepted (`qmmpui/configdialog.cpp:543`). The plugin is
 unloaded; the skinned UI then hides the empty Tools menu (the Simple UI shows it empty).
-qmmp behaviour, not ours. Fix: a note in our settings dialog and the README — press OK in
+qmmp behaviour, not ours. Confirmed by Alex 2026-09-24: after a restart with the plugin
+enabled, Tools → Spotify appears in the skinned UI. Fix: a note in our settings dialog and the README — press OK in
 qmmp's Settings after enabling the plugin.
 
 ### Crash on quit
