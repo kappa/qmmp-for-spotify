@@ -101,3 +101,22 @@ Two paths fail today:
   pauses the device. With Spotify Autoplay on, the device continues with a recommendation
   and the follower may pull qmmp back to Spotify (predicted, not yet tested).
 Fix: pause the device whenever the engine hands over to another engine; covers both paths.
+
+## Attach to the device's ongoing playback at startup
+
+After a qmmp restart the login survives, but qmmp does not show what the device is
+already playing until the next track starts: the follower is edge-triggered and treats
+the first poll as a baseline (ruling during Task 13, to avoid grabbing playback at startup
+and to protect Stop from stale polls). Seen in manual testing 2026-09-24.
+Proposed: the first poll after startup attaches when the selected device is playing
+(select or append the current track and show its position). Safe for Stop, since nothing
+has been stopped at startup. Change in `Follower`/`isFollowTrigger` plus a test.
+
+## Adding another user's playlist link leaves the raw link behind
+
+Add URL with a playlist owned by someone else: Spotify answers "Resource not found"
+(Development Mode cannot read other users' playlists), the notice shows Spotify's raw text,
+and the unexpanded link stays in the qmmp playlist (`src/general/linkexpander.cpp:56-59`
+keeps the raw entry on failure); it cannot be played. Seen in manual testing 2026-09-24.
+Fix: remove the raw entry when expansion fails; for playlist links answered with 403/404
+say "Spotify doesn't let this app read other users' playlists".
