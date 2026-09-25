@@ -3,6 +3,7 @@
 #include <qmmp/soundcore.h>
 #include <qmmp/statehandler.h>
 #include <qmmp/trackinfo.h>
+#include "apipolicy.h"
 #include "spotifyclient.h"
 #include "spotifyengine.h"
 #include "spotifypoller.h"
@@ -66,6 +67,7 @@ bool SpotifyEngine::enqueue(InputSource *source)
 
 bool SpotifyEngine::play()
 {
+    m_client->setSuppressedTrack(QString());
     m_logic.play();
     publishTracks();
     return true;
@@ -108,9 +110,16 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
     });
 }
 
+// captures only the client: after a hand-over to another engine this engine is deleted
+// before the reply arrives
 void SpotifyEngine::apiPause()
 {
-    m_client->api()->pause(m_client->deviceId(), notifyOnFailure());
+    SpotifyClient *client = m_client;
+    m_client->api()->pause(m_client->deviceId(), [client](const ApiResult &result) {
+        if(!result.ok && !isAlreadyPausedReply(result.status, result.reason))
+            client->notify(result.message);
+        client->poller()->pollSoon();
+    });
 }
 
 void SpotifyEngine::apiResume()
@@ -151,6 +160,11 @@ void SpotifyEngine::apiNext()
             self->publishTracks();
         }
     });
+}
+
+void SpotifyEngine::suppressFollow(const QString &trackId)
+{
+    m_client->setSuppressedTrack(trackId);
 }
 
 void SpotifyEngine::apiSetVolume(int percent)

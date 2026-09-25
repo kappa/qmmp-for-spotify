@@ -3,8 +3,6 @@
 Open items found during implementation, review and manual testing. Each needs its own
 short design check before implementation.
 
-## High priority
-
 ## Normal priority
 
 ### Play Spotify-sourced playlists as Spotify contexts (wanted, needs a design round)
@@ -52,34 +50,6 @@ on them — skip to the next track, as Spotify does.
 - Related, from the final code review: when a track change fails on a systemic error, the
   previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
   pause was cancelled). Pause the device on that path.
-
-### Double-click on the current track does nothing (low priority)
-
-Double-clicking the track that is playing should behave like double-clicking any other
-track: start it from the beginning. It does nothing in the Simple UI. The Play button
-does restart it.
-
-Cause (traced 2026-09-24): qsui's double-click calls `MediaPlayer::stop()` then `play()`
-(`qsuilistwidget.cpp:278-280`), and `SoundCore::play()` calls stop again, so the engine
-sees stop → stop → play. The second `EngineLogic::stop()` has no current track and
-overwrites the first one's restart candidate and pending pause
-(`src/logic/enginelogic.cpp:114-115`); `play()` then adopts the still-playing track and
-sends nothing.
-Fix: make `stop()` a no-op when there is no current track; tests for stop → stop → play of
-the same track (expects play from 0) and for a double stop still pausing the device.
-
-### Moving from a Spotify track to a local file leaves the device playing
-
-When qmmp leaves a Spotify track for a non-Spotify item, the device must be paused.
-Two paths fail today:
-- Switching by double-click: the double stop cancels the pending pause (same root cause
-  as "Double-click on the current track does nothing", `src/logic/enginelogic.cpp:114`).
-  Seen in manual testing 2026-09-24: local file plays through qmmp while the device keeps
-  playing the Spotify track.
-- Natural end of a Spotify track with a local file next: `EngineLogic::finish()` never
-  pauses the device. With Spotify Autoplay on, the device continues with a recommendation
-  and the follower may pull qmmp back to Spotify (predicted, not yet tested).
-Fix: pause the device whenever the engine hands over to another engine; covers both paths.
 
 ### Attach to the device's ongoing playback at startup
 

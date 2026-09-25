@@ -2,10 +2,11 @@
 #include "spotifylink.h"
 
 FollowDecision decideFollow(const PlayerState &state, const QString &selectedDevice, const QStringList &engineTrackIds,
-                            bool engineAwaiting, const QStringList &playlistPaths, int currentIndex)
+                            const QString &suppressedTrackId, bool engineAwaiting, const QStringList &playlistPaths, int currentIndex)
 {
     if(engineAwaiting || selectedDevice.isEmpty() || !state.hasPlayback || !state.isPlaying
-            || state.deviceId != selectedDevice || !state.track.isValid() || engineTrackIds.contains(state.track.id))
+            || state.deviceId != selectedDevice || !state.track.isValid() || engineTrackIds.contains(state.track.id)
+            || state.track.id == suppressedTrackId)
         return FollowDecision();
 
     const QString path = SpotifyLink::trackPath(state.track.id);
@@ -15,6 +16,12 @@ FollowDecision decideFollow(const PlayerState &state, const QString &selectedDev
     if(index >= 0)
         return FollowDecision { FollowDecision::Select, index };
     return FollowDecision { FollowDecision::Append, -1 };
+}
+
+bool endsSuppression(const PlayerState &state, const QString &suppressedTrackId)
+{
+    return !suppressedTrackId.isEmpty() && state.hasPlayback && state.isPlaying && state.track.isValid()
+            && state.track.id != suppressedTrackId;
 }
 
 bool needsExpansion(const QString &path, const QString &title)

@@ -43,7 +43,7 @@ void Follower::onState(const PlayerState &state)
     const int currentIndex = tracks.indexOf(model->currentTrack());
 
     const FollowDecision decision = decideFollow(state, client->deviceId(), client->engineTrackIds(),
-                                                 client->isEngineAwaiting(), paths, currentIndex);
+                                                 client->suppressedTrack(), client->isEngineAwaiting(), paths, currentIndex);
     if(decision.action == FollowDecision::None)
         return;
 

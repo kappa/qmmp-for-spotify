@@ -107,9 +107,13 @@ void EngineLogic::seek(qint64 positionMs)
 
 void EngineLogic::stop()
 {
+    // SoundCore::play() stops again after MediaPlayer::stop(); that second stop must not wipe
+    // the first one's restart candidate and pending pause
+    if(m_current.isEmpty())
+        return;
     // m_state is our belief; m_last may predate a resume we just sent. A paused device is left alone (403).
     const bool active = m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack());
-    m_pendingPause = !m_current.isEmpty() && active;
+    m_pendingPause = active;
     m_stoppedId = m_current.id;
     m_activeGeneration = 0;
     m_current = Entry();
@@ -286,6 +290,13 @@ void EngineLogic::finish()
         if(queued)
             skipOnDevice();
         return;
+    }
+    // qmmp moves on to a non-Spotify item or its playlist ended: the device must not keep
+    // playing (Spotify's Autoplay may already have started a recommendation)
+    if(m_last.hasPlayback && m_last.deviceId == m_device)
+    {
+        m_sink->apiPause();
+        m_sink->suppressFollow(m_last.track.id);
     }
     m_current = Entry();
     m_awaiting = false;

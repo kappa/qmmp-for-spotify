@@ -15,6 +15,7 @@ private slots:
     void passesSpotifyMessage();
     void volumeControlDisallowed();
     void networkError();
+    void pauseOfPausedDeviceIsHarmless();
 };
 
 void TestApiPolicy::success()
@@ -80,6 +81,14 @@ void TestApiPolicy::networkError()
     const ApiDecision d = classifyReply(0, u"Host not found"_s, QByteArray(), QByteArray(), false);
     QCOMPARE(d.action, ApiDecision::Fail);
     QVERIFY(d.message.contains(u"Host not found"_s));
+}
+
+void TestApiPolicy::pauseOfPausedDeviceIsHarmless()
+{
+    QVERIFY(isAlreadyPausedReply(403, u"UNKNOWN"_s));
+    QVERIFY(isAlreadyPausedReply(403, u"ALREADY_PAUSED"_s));
+    QVERIFY(!isAlreadyPausedReply(403, u"PREMIUM_REQUIRED"_s));
+    QVERIFY(!isAlreadyPausedReply(404, u"UNKNOWN"_s));
 }
 
 QTEST_APPLESS_MAIN(TestApiPolicy)

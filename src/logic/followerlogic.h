@@ -13,7 +13,8 @@ struct FollowDecision
 };
 
 FollowDecision decideFollow(const PlayerState &state, const QString &selectedDevice, const QStringList &engineTrackIds,
-                            bool engineAwaiting, const QStringList &playlistPaths, int currentIndex);
+                            const QString &suppressedTrackId, bool engineAwaiting, const QStringList &playlistPaths, int currentIndex);
+bool endsSuppression(const PlayerState &state, const QString &suppressedTrackId);
 bool needsExpansion(const QString &path, const QString &title);
 bool isFollowTrigger(const PlayerState &previous, const PlayerState &current, const QString &selectedDevice);
 

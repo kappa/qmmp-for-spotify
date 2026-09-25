@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSettings>
+#include "followerlogic.h"
 #include "spotifyapi.h"
 #include "spotifyauth.h"
 #include "spotifyclient.h"
@@ -38,6 +39,10 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
     m_poller->setSelectedDevice(deviceId());
     m_poller->setEnabled(m_auth->hasCredentials());
 
+    connect(m_poller, &SpotifyPoller::stateChanged, this, [this](const PlayerState &state) {
+        if(endsSuppression(state, m_suppressedTrack))
+            m_suppressedTrack.clear();
+    });
     connect(m_auth, &SpotifyAuth::loggedIn, this, [this] {
         m_poller->setEnabled(true);
         notify(u"Logged in to Spotify"_s);

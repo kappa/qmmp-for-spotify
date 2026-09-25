@@ -22,6 +22,7 @@ public:
     void apiSeek(qint64 positionMs) override { calls << u"seek %1"_s.arg(positionMs); }
     void apiQueue(const QString &uri) override { calls << u"queue "_s + uri; }
     void apiNext() override { calls << u"next"_s; }
+    void suppressFollow(const QString &trackId) override { calls << u"suppress "_s + trackId; }
     void reportState(EngineState state) override
     {
         static const QStringList names = { u"Stopped"_s, u"Buffering"_s, u"Playing"_s, u"Paused"_s };
@@ -71,7 +72,12 @@ private slots:
     void updateStateQueuesInsideWindow();
     void switchingBeforeLeadTimeNeverQueuesAbandonedNext();
     void finishesWhenTrackEnds();
+    void finishPausesStoppedDevice();
+    void finishPausesAutoplayTrack();
+    void finishLeavesOtherDeviceAlone();
     void stopPausesOwnTrack();
+    void doubleStopStillPauses();
+    void doubleStopThenRestartPlaysFromStart();
     void stopLeavesForeignTrackAlone();
     void ignoresOtherDevices();
     void interpolatesElapsed();
@@ -273,8 +279,32 @@ void TestEngineLogic::finishesWhenTrackEnds()
     startPlaying(u"a"_s);
     m_now += 198500;
     m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
-    QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s }));
+    QCOMPARE(m_sink.calls.mid(2), (QStringList { u"finished"_s, u"state Stopped"_s }));
     QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+void TestEngineLogic::finishPausesStoppedDevice()
+{
+    startPlaying(u"a"_s);
+    m_now += 198500;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"suppress a"_s, u"finished"_s, u"state Stopped"_s }));
+}
+
+void TestEngineLogic::finishPausesAutoplayTrack()
+{
+    startPlaying(u"a"_s);
+    m_now += 198500;
+    m_logic->updateState(deviceState(u"dev"_s, u"r"_s, 1000));
+    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"suppress r"_s, u"finished"_s, u"state Stopped"_s }));
+}
+
+void TestEngineLogic::finishLeavesOtherDeviceAlone()
+{
+    startPlaying(u"a"_s);
+    m_now += 198500;
+    m_logic->updateState(deviceState(u"phone"_s, u"r"_s, 1000));
+    QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s }));
 }
 
 void TestEngineLogic::stopPausesOwnTrack()
@@ -285,6 +315,26 @@ void TestEngineLogic::stopPausesOwnTrack()
     m_logic->flushPendingPause();
     m_logic->flushPendingPause();
     QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"pause"_s }));
+}
+
+void TestEngineLogic::doubleStopStillPauses()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"pause"_s }));
+}
+
+void TestEngineLogic::doubleStopThenRestartPlaysFromStart()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"state Buffering"_s, u"play spotify:track:a 0"_s }));
 }
 
 void TestEngineLogic::stopLeavesForeignTrackAlone()

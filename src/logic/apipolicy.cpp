@@ -66,3 +66,9 @@ ApiDecision classifyReply(int httpStatus, const QString &networkError, const QBy
         decision.message = u"Spotify: request failed (HTTP %1)"_s.arg(httpStatus);
     return decision;
 }
+
+bool isAlreadyPausedReply(int httpStatus, const QString &reason)
+{
+    // Spotify reports it as "Player command failed: Restriction violated", reason UNKNOWN
+    return httpStatus == 403 && (reason == "UNKNOWN"_L1 || reason == "ALREADY_PAUSED"_L1);
+}

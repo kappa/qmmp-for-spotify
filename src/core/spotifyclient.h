@@ -30,6 +30,9 @@ public:
     void setEngineTracks(const QStringList &ids, bool awaiting);
     QStringList engineTrackIds() const { return m_engineTrackIds; }
     bool isEngineAwaiting() const { return m_engineAwaiting; }
+    // the engine paused this track when qmmp left Spotify; the follower must not return to it
+    void setSuppressedTrack(const QString &id) { m_suppressedTrack = id; }
+    QString suppressedTrack() const { return m_suppressedTrack; }
 
     void notify(const QString &message);
 
@@ -45,6 +48,7 @@ private:
     SpotifyPoller *m_poller;
     QStringList m_engineTrackIds;
     bool m_engineAwaiting = false;
+    QString m_suppressedTrack;
     QHash<QString, qint64> m_noticeTimes;
 };
 

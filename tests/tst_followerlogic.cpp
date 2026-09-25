@@ -26,6 +26,8 @@ private slots:
     void ignoresWhileEngineAwaiting();
     void ignoresOtherDeviceAndPaused();
     void ignoresEngineTracks();
+    void ignoresSuppressedTrack();
+    void suppressionEndsOnOtherTrackPlaying();
     void selectsNextOccurrenceAfterCurrent();
     void selectsEarlierOccurrence();
     void appendsMissingTrack();
@@ -38,38 +40,53 @@ private slots:
 
 void TestFollowerLogic::ignoresWhileEngineAwaiting()
 {
-    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s }, true, kPlaylist, 0).action, FollowDecision::None);
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s }, QString(), true, kPlaylist, 0).action, FollowDecision::None);
 }
 
 void TestFollowerLogic::ignoresOtherDeviceAndPaused()
 {
-    QCOMPARE(decideFollow(playing(u"phone"_s, u"x"_s), u"dev"_s, {}, false, kPlaylist, 0).action, FollowDecision::None);
-    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s, false), u"dev"_s, {}, false, kPlaylist, 0).action, FollowDecision::None);
-    QCOMPARE(decideFollow(PlayerState(), u"dev"_s, {}, false, kPlaylist, 0).action, FollowDecision::None);
+    QCOMPARE(decideFollow(playing(u"phone"_s, u"x"_s), u"dev"_s, {}, QString(), false, kPlaylist, 0).action, FollowDecision::None);
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s, false), u"dev"_s, {}, QString(), false, kPlaylist, 0).action, FollowDecision::None);
+    QCOMPARE(decideFollow(PlayerState(), u"dev"_s, {}, QString(), false, kPlaylist, 0).action, FollowDecision::None);
 }
 
 void TestFollowerLogic::ignoresEngineTracks()
 {
-    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s, u"x"_s }, false, kPlaylist, 0).action, FollowDecision::None);
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s, u"x"_s }, QString(), false, kPlaylist, 0).action, FollowDecision::None);
+}
+
+void TestFollowerLogic::ignoresSuppressedTrack()
+{
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"r"_s), u"dev"_s, {}, u"r"_s, false, kPlaylist, 2).action, FollowDecision::None);
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"new"_s), u"dev"_s, {}, u"r"_s, false, kPlaylist, 2).action, FollowDecision::Append);
+}
+
+void TestFollowerLogic::suppressionEndsOnOtherTrackPlaying()
+{
+    QVERIFY(!endsSuppression(playing(u"dev"_s, u"r"_s), u"r"_s));
+    QVERIFY(!endsSuppression(playing(u"dev"_s, u"x"_s, false), u"r"_s));
+    QVERIFY(!endsSuppression(PlayerState(), u"r"_s));
+    QVERIFY(!endsSuppression(playing(u"dev"_s, u"x"_s), QString()));
+    QVERIFY(endsSuppression(playing(u"dev"_s, u"x"_s), u"r"_s));
 }
 
 void TestFollowerLogic::selectsNextOccurrenceAfterCurrent()
 {
-    const FollowDecision d = decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s }, false, kPlaylist, 2);
+    const FollowDecision d = decideFollow(playing(u"dev"_s, u"x"_s), u"dev"_s, { u"a"_s }, QString(), false, kPlaylist, 2);
     QCOMPARE(d.action, FollowDecision::Select);
     QCOMPARE(d.index, 3);
 }
 
 void TestFollowerLogic::selectsEarlierOccurrence()
 {
-    const FollowDecision d = decideFollow(playing(u"dev"_s, u"a"_s), u"dev"_s, {}, false, kPlaylist, 3);
+    const FollowDecision d = decideFollow(playing(u"dev"_s, u"a"_s), u"dev"_s, {}, QString(), false, kPlaylist, 3);
     QCOMPARE(d.action, FollowDecision::Select);
     QCOMPARE(d.index, 0);
 }
 
 void TestFollowerLogic::appendsMissingTrack()
 {
-    QCOMPARE(decideFollow(playing(u"dev"_s, u"new"_s), u"dev"_s, {}, false, kPlaylist, -1).action, FollowDecision::Append);
+    QCOMPARE(decideFollow(playing(u"dev"_s, u"new"_s), u"dev"_s, {}, QString(), false, kPlaylist, -1).action, FollowDecision::Append);
 }
 
 void TestFollowerLogic::expansion()

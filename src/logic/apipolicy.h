@@ -17,5 +17,7 @@ struct ApiDecision
 
 ApiDecision classifyReply(int httpStatus, const QString &networkError, const QByteArray &retryAfter,
                           const QByteArray &body, bool retried);
+// Spotify answers a pause of an already-paused device with 403
+bool isAlreadyPausedReply(int httpStatus, const QString &reason);
 
 #endif

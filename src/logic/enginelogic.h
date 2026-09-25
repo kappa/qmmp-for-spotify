@@ -18,6 +18,8 @@ public:
     virtual void apiSeek(qint64 positionMs) = 0;
     virtual void apiQueue(const QString &uri) = 0;
     virtual void apiNext() = 0;
+    // the follower must not pull qmmp back to this track
+    virtual void suppressFollow(const QString &trackId) = 0;
     virtual void reportState(EngineState state) = 0;
     virtual void reportTrack(const QString &path, const SpotifyTrack &track) = 0;
     virtual void reportFinished() = 0;
