@@ -24,6 +24,9 @@ Direction (2026-09-24):
   officially documented for playback; Spotify's shuffle order is not visible via the API,
   so qmmp only follows, it cannot know the next track in advance.
 - Supersedes "hand the upcoming qmmp playlist to Spotify as a uris list".
+- End of playlist (decided 2026-09-24): in context mode qmmp follows the server (Spotify's
+  Autoplay may continue, qmmp follows it); for custom or edited playlists (track-by-track
+  mode) qmmp pauses the device when its playlist ends.
 
 ## Volume control (needed)
 
@@ -85,3 +88,16 @@ the plugin's Preferences were accepted (`qmmpui/configdialog.cpp:543`). The plug
 unloaded; the skinned UI then hides the empty Tools menu (the Simple UI shows it empty).
 qmmp behaviour, not ours. Fix: a note in our settings dialog and the README — press OK in
 qmmp's Settings after enabling the plugin.
+
+## Moving from a Spotify track to a local file leaves the device playing
+
+When qmmp leaves a Spotify track for a non-Spotify item, the device must be paused.
+Two paths fail today:
+- Switching by double-click: the double stop cancels the pending pause (same root cause
+  as "Double-click on the current track does nothing", `src/logic/enginelogic.cpp:114`).
+  Seen in manual testing 2026-09-24: local file plays through qmmp while the device keeps
+  playing the Spotify track.
+- Natural end of a Spotify track with a local file next: `EngineLogic::finish()` never
+  pauses the device. With Spotify Autoplay on, the device continues with a recommendation
+  and the follower may pull qmmp back to Spotify (predicted, not yet tested).
+Fix: pause the device whenever the engine hands over to another engine; covers both paths.
