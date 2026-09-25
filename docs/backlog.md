@@ -52,10 +52,10 @@ on them — skip to the next track, as Spotify does.
   walking a whole playlist on errors that affect every track). Split the errors instead:
   track-specific (unavailable, removed) → skip to the next track; systemic (not logged in,
   device gone, no network, Premium required, rate limited) → stop with a notice.
-- Stop rule (Alex): if the unplayable track is the last one in the playlist, stop instead
-  of skipping (no wrap-around under repeat-all), so an all-unplayable playlist stops. Note:
-  qmmp itself already stops after skipping trackCount consecutive failures
-  (`qmmpui/mediaplayer.cpp:130-136`).
+- Stop rule: rely on qmmp's built-in guard — on a track error qmmp skips to the next track
+  and stops after trackCount consecutive failures (`qmmpui/mediaplayer.cpp:130-136`), so an
+  all-unplayable playlist stops after one pass. Track-specific failures must therefore be
+  reported as NormalError (skip), systemic ones as FatalError (stop).
 - Loading: `parseTrack` currently drops tracks with `is_playable: false`; keep them
   (optionally marked) instead.
 - Verify first with the CLI: whether `market` on playlist/liked-songs requests still makes
