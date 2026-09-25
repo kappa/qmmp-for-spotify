@@ -49,7 +49,7 @@ int main(int argc, char **argv)
     const QString clientId = qEnvironmentVariable("SPOTIFY_CLIENT_ID");
     if(args.isEmpty() || clientId.isEmpty())
     {
-        qCritical("usage: SPOTIFY_CLIENT_ID=<id> spotify-cli login | logout | token | me | devices | state | playlists"
+        qCritical("usage: SPOTIFY_CLIENT_ID=<id> spotify-cli login | logout | token | me | me-id | devices | state | playlists"
                   " | items <playlist id> | liked | album <album id> | track <track id>"
                   " | play <device id> <spotify uri> | pause <device id> | watch <device id>");
         return 2;
@@ -80,6 +80,8 @@ int main(int argc, char **argv)
             auth.withToken([](bool ok) { out() << (ok ? "token ok\n" : "no valid token\n"); done(ok ? 0 : 1); });
         else if(command == "me"_L1)
             api.displayName([](const ApiResult &result, const QString &name) { out() << name << '\n'; finish(result); });
+        else if(command == "me-id"_L1)
+            api.userId([](const ApiResult &result, const QString &id) { out() << id << '\n'; finish(result); });
         else if(command == "devices"_L1)
             api.devices([](const ApiResult &result, const QList<SpotifyDevice> &devices) {
                 for(const SpotifyDevice &d : devices)
@@ -98,7 +100,8 @@ int main(int argc, char **argv)
         else if(command == "playlists"_L1)
             api.myPlaylists([](const ApiResult &result, const QList<SpotifyPlaylist> &playlists) {
                 for(const SpotifyPlaylist &p : playlists)
-                    out() << p.id << "  " << p.name << " (" << p.trackCount << ")\n";
+                    out() << p.id << "  " << p.name << " (" << p.trackCount << ") owner=" << p.ownerId
+                          << (p.collaborative ? " collaborative" : "") << '\n';
                 finish(result);
             });
         else if(command == "items"_L1)

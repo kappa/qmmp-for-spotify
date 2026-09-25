@@ -15,6 +15,7 @@ private slots:
     void trackItemsSkipUnplayable();
     void album();
     void displayName();
+    void userId();
 };
 
 void TestSpotifyJson::devices()
@@ -64,12 +65,16 @@ void TestSpotifyJson::playerStateEpisode()
 void TestSpotifyJson::playlists()
 {
     const SpotifyPage<SpotifyPlaylist> page = SpotifyJson::parsePlaylists(R"({
-        "items":[{"id":"p1","name":"Old style","tracks":{"total":12}},
-                 {"id":"p2","name":"New style","items":{"total":7}}],
+        "items":[{"id":"p1","name":"Old style","tracks":{"total":12},"owner":{"id":"alex123"},"collaborative":false},
+                 {"id":"p2","name":"New style","items":{"total":7},"owner":{"id":"friend"},"collaborative":true}],
         "next":"https://api.spotify.com/v1/me/playlists?offset=50&limit=50"})");
     QCOMPARE(page.items.size(), 2);
     QCOMPARE(page.items.at(0).trackCount, 12);
+    QCOMPARE(page.items.at(0).ownerId, u"alex123"_s);
+    QVERIFY(!page.items.at(0).collaborative);
     QCOMPARE(page.items.at(1).trackCount, 7);
+    QCOMPARE(page.items.at(1).ownerId, u"friend"_s);
+    QVERIFY(page.items.at(1).collaborative);
     QCOMPARE(page.next, u"https://api.spotify.com/v1/me/playlists?offset=50&limit=50"_s);
 }
 
@@ -105,6 +110,11 @@ void TestSpotifyJson::displayName()
 {
     QCOMPARE(SpotifyJson::parseDisplayName(R"({"id":"alex123","display_name":"Alex"})"), u"Alex"_s);
     QCOMPARE(SpotifyJson::parseDisplayName(R"({"id":"alex123","display_name":null})"), u"alex123"_s);
+}
+
+void TestSpotifyJson::userId()
+{
+    QCOMPARE(SpotifyJson::parseUserId(R"({"id":"alex123","display_name":"Alex"})"), u"alex123"_s);
 }
 
 QTEST_APPLESS_MAIN(TestSpotifyJson)

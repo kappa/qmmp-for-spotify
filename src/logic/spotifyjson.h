@@ -16,6 +16,7 @@ SpotifyPage<SpotifyTrack> parseTrackItems(const QByteArray &json);
 SpotifyPage<SpotifyTrack> parseAlbumTracks(const QByteArray &json, const QString &albumName);
 SpotifyPage<SpotifyTrack> parseAlbum(const QByteArray &json, QString *albumName);
 QString parseDisplayName(const QByteArray &json);
+QString parseUserId(const QByteArray &json);
 }
 
 #endif

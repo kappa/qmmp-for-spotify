@@ -32,6 +32,7 @@ public:
     void devices(ListCallback<SpotifyDevice> callback);
     void playerState(std::function<void(const ApiResult &, const PlayerState &)> callback);
     void displayName(std::function<void(const ApiResult &, const QString &)> callback);
+    void userId(std::function<void(const ApiResult &, const QString &)> callback);
     void play(const QString &deviceId, const QStringList &uris, qint64 positionMs, Callback callback);
     void pause(const QString &deviceId, Callback callback);
     void resume(const QString &deviceId, Callback callback);

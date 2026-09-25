@@ -33,6 +33,8 @@ struct SpotifyPlaylist
     QString id;
     QString name;
     int trackCount = 0;
+    QString ownerId;
+    bool collaborative = false;
 
     bool isValid() const { return !id.isEmpty(); }
 };

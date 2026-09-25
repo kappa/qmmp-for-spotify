@@ -4,12 +4,14 @@
 #include <QPointer>
 #include <QVBoxLayout>
 #include "playlistdialog.h"
+#include "playlistfilter.h"
 #include "spotifyapi.h"
 #include "spotifyclient.h"
 
 PlayListDialog::PlayListDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Load Spotify Playlist"));
+    resize(520, 600);
     m_list = new QListWidget(this);
     m_status = new QLabel(tr("Loading…"), this);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -22,13 +24,31 @@ PlayListDialog::PlayListDialog(QWidget *parent) : QDialog(parent)
     connect(m_list, &QListWidget::itemDoubleClicked, this, &PlayListDialog::accept);
 
     QPointer<PlayListDialog> self(this);
-    SpotifyClient::instance()->api()->myPlaylists([self](const ApiResult &result, const QList<SpotifyPlaylist> &playlists) {
+    SpotifyClient::instance()->api()->userId([self](const ApiResult &userResult, const QString &userId) {
         if(!self)
             return;
-        self->m_playlists = playlists;
-        for(const SpotifyPlaylist &playlist : playlists)
-            self->m_list->addItem(tr("%1 (%2 tracks)").arg(playlist.name).arg(playlist.trackCount));
-        self->m_status->setText(result.ok ? QString() : result.message);
+        if(!userResult.ok)
+        {
+            self->m_status->setText(userResult.message);
+            return;
+        }
+        SpotifyClient::instance()->api()->myPlaylists([self, userId](const ApiResult &result, const QList<SpotifyPlaylist> &playlists) {
+            if(!self)
+                return;
+            const QList<SpotifyPlaylist> readable = readablePlaylists(playlists, userId);
+            self->m_playlists = readable;
+            for(const SpotifyPlaylist &playlist : readable)
+                self->m_list->addItem(tr("%1 (%2 tracks)").arg(playlist.name).arg(playlist.trackCount));
+            if(!result.ok)
+            {
+                self->m_status->setText(result.message);
+                return;
+            }
+            const int hiddenCount = playlists.size() - readable.size();
+            self->m_status->setText(hiddenCount > 0
+                ? tr("%n playlist(s) by other users hidden — Spotify doesn't let apps like this read them", "", hiddenCount)
+                : QString());
+        });
     });
 }
 

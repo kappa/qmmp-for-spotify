@@ -93,6 +93,8 @@ SpotifyPage<SpotifyPlaylist> SpotifyJson::parsePlaylists(const QByteArray &json)
         playlist.name = object.value("name"_L1).toString();
         const QString countKey = object.contains("tracks"_L1) ? u"tracks"_s : u"items"_s;
         playlist.trackCount = object.value(countKey).toObject().value("total"_L1).toInt();
+        playlist.ownerId = object.value("owner"_L1).toObject().value("id"_L1).toString();
+        playlist.collaborative = object.value("collaborative"_L1).toBool();
         return playlist;
     });
 }
@@ -128,4 +130,9 @@ QString SpotifyJson::parseDisplayName(const QByteArray &json)
     const QJsonObject object = toObject(json);
     const QString name = object.value("display_name"_L1).toString();
     return name.isEmpty() ? object.value("id"_L1).toString() : name;
+}
+
+QString SpotifyJson::parseUserId(const QByteArray &json)
+{
+    return toObject(json).value("id"_L1).toString();
 }

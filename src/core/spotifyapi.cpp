@@ -132,6 +132,13 @@ void SpotifyApi::displayName(std::function<void(const ApiResult &, const QString
     });
 }
 
+void SpotifyApi::userId(std::function<void(const ApiResult &, const QString &)> callback)
+{
+    request("GET", endpoint(u"/me"_s), QByteArray(), [callback](const ApiResult &result) {
+        callback(result, result.ok ? SpotifyJson::parseUserId(result.body) : QString());
+    });
+}
+
 void SpotifyApi::play(const QString &deviceId, const QStringList &uris, qint64 positionMs, Callback callback)
 {
     const QJsonObject body { { u"uris"_s, QJsonArray::fromStringList(uris) }, { u"position_ms"_s, positionMs } };
