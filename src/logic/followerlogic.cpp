@@ -18,10 +18,14 @@ FollowDecision decideFollow(const PlayerState &state, const QString &selectedDev
     return FollowDecision { FollowDecision::Append, -1 };
 }
 
-bool endsSuppression(const PlayerState &state, const QString &suppressedTrackId)
+bool endsSuppression(const PlayerState &state, const QString &selectedDevice, const QString &suppressedTrackId)
 {
-    return !suppressedTrackId.isEmpty() && state.hasPlayback && state.isPlaying && state.track.isValid()
-            && state.track.id != suppressedTrackId;
+    if(suppressedTrackId.isEmpty() || !state.hasPlayback)
+        return false;
+    // once the device is paused, a resume from elsewhere is followed again, as after Stop
+    if(!state.isPlaying)
+        return state.deviceId == selectedDevice;
+    return state.track.isValid() && state.track.id != suppressedTrackId;
 }
 
 bool needsExpansion(const QString &path, const QString &title)

@@ -292,10 +292,11 @@ void EngineLogic::finish()
         return;
     }
     // qmmp moves on to a non-Spotify item or its playlist ended: the device must not keep
-    // playing (Spotify's Autoplay may already have started a recommendation)
+    // playing (Spotify's Autoplay may already have started a recommendation). The pause is
+    // deferred like stop()'s: if qmmp plays a Spotify track next, that play() cancels it.
     if(m_last.hasPlayback && m_last.deviceId == m_device)
     {
-        m_sink->apiPause();
+        m_pendingPause = true;
         m_sink->suppressFollow(m_last.track.id);
     }
     m_current = Entry();

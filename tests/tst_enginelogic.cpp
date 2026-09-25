@@ -71,9 +71,9 @@ private slots:
     void tickDoesNotQueueWhilePaused();
     void updateStateQueuesInsideWindow();
     void switchingBeforeLeadTimeNeverQueuesAbandonedNext();
-    void finishesWhenTrackEnds();
     void finishPausesStoppedDevice();
     void finishPausesAutoplayTrack();
+    void playAfterFinishCancelsPause();
     void finishLeavesOtherDeviceAlone();
     void stopPausesOwnTrack();
     void doubleStopStillPauses();
@@ -274,21 +274,15 @@ void TestEngineLogic::switchingBeforeLeadTimeNeverQueuesAbandonedNext()
     QVERIFY(!m_sink.calls.contains(u"queue spotify:track:b"_s));
 }
 
-void TestEngineLogic::finishesWhenTrackEnds()
-{
-    startPlaying(u"a"_s);
-    m_now += 198500;
-    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
-    QCOMPARE(m_sink.calls.mid(2), (QStringList { u"finished"_s, u"state Stopped"_s }));
-    QVERIFY(m_logic->trackIds().isEmpty());
-}
-
 void TestEngineLogic::finishPausesStoppedDevice()
 {
     startPlaying(u"a"_s);
     m_now += 198500;
     m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
-    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"suppress a"_s, u"finished"_s, u"state Stopped"_s }));
+    QCOMPARE(m_sink.calls, (QStringList { u"suppress a"_s, u"finished"_s, u"state Stopped"_s }));
+    QVERIFY(m_logic->trackIds().isEmpty());
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls.mid(3), QStringList { u"pause"_s });
 }
 
 void TestEngineLogic::finishPausesAutoplayTrack()
@@ -296,7 +290,21 @@ void TestEngineLogic::finishPausesAutoplayTrack()
     startPlaying(u"a"_s);
     m_now += 198500;
     m_logic->updateState(deviceState(u"dev"_s, u"r"_s, 1000));
-    QCOMPARE(m_sink.calls, (QStringList { u"pause"_s, u"suppress r"_s, u"finished"_s, u"state Stopped"_s }));
+    QCOMPARE(m_sink.calls, (QStringList { u"suppress r"_s, u"finished"_s, u"state Stopped"_s }));
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls.mid(3), QStringList { u"pause"_s });
+}
+
+void TestEngineLogic::playAfterFinishCancelsPause()
+{
+    startPlaying(u"a"_s);
+    m_now += 198500;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"suppress a"_s, u"finished"_s, u"state Stopped"_s, u"state Buffering"_s,
+                                          u"play spotify:track:b 0"_s }));
 }
 
 void TestEngineLogic::finishLeavesOtherDeviceAlone()
@@ -304,6 +312,7 @@ void TestEngineLogic::finishLeavesOtherDeviceAlone()
     startPlaying(u"a"_s);
     m_now += 198500;
     m_logic->updateState(deviceState(u"phone"_s, u"r"_s, 1000));
+    m_logic->flushPendingPause();
     QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s }));
 }
 

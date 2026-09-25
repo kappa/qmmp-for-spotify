@@ -28,6 +28,7 @@ private slots:
     void ignoresEngineTracks();
     void ignoresSuppressedTrack();
     void suppressionEndsOnOtherTrackPlaying();
+    void suppressionEndsWhenDeviceNotPlaying();
     void selectsNextOccurrenceAfterCurrent();
     void selectsEarlierOccurrence();
     void appendsMissingTrack();
@@ -63,11 +64,17 @@ void TestFollowerLogic::ignoresSuppressedTrack()
 
 void TestFollowerLogic::suppressionEndsOnOtherTrackPlaying()
 {
-    QVERIFY(!endsSuppression(playing(u"dev"_s, u"r"_s), u"r"_s));
-    QVERIFY(!endsSuppression(playing(u"dev"_s, u"x"_s, false), u"r"_s));
-    QVERIFY(!endsSuppression(PlayerState(), u"r"_s));
-    QVERIFY(!endsSuppression(playing(u"dev"_s, u"x"_s), QString()));
-    QVERIFY(endsSuppression(playing(u"dev"_s, u"x"_s), u"r"_s));
+    QVERIFY(!endsSuppression(playing(u"dev"_s, u"r"_s), u"dev"_s, u"r"_s));
+    QVERIFY(!endsSuppression(PlayerState(), u"dev"_s, u"r"_s));
+    QVERIFY(!endsSuppression(playing(u"dev"_s, u"x"_s), u"dev"_s, QString()));
+    QVERIFY(!endsSuppression(playing(u"phone"_s, u"r"_s, false), u"dev"_s, u"r"_s));
+    QVERIFY(endsSuppression(playing(u"dev"_s, u"x"_s), u"dev"_s, u"r"_s));
+}
+
+void TestFollowerLogic::suppressionEndsWhenDeviceNotPlaying()
+{
+    QVERIFY(endsSuppression(playing(u"dev"_s, u"r"_s, false), u"dev"_s, u"r"_s));
+    QVERIFY(endsSuppression(playing(u"dev"_s, u"x"_s, false), u"dev"_s, u"r"_s));
 }
 
 void TestFollowerLogic::selectsNextOccurrenceAfterCurrent()

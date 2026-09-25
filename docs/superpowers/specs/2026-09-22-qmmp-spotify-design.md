@@ -202,6 +202,7 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   play, which stops again), so double-clicking the current track restarts it and
   double-clicking a local file still pauses the device. When a Spotify track ends with no
   Spotify track next (a local file follows, or a custom playlist ends), the engine pauses
-  the device (a 403 for an already-paused device is not shown) and the follower ignores the
-  track the device was on until the device plays another track or qmmp starts a Spotify
-  track, so Autoplay cannot pull qmmp back.
+  the device (deferred like Stop's pause, so a Spotify track qmmp plays next cancels it; a
+  403 for an already-paused device is not shown) and the follower ignores the track the
+  device was on until the device is seen paused, plays another track, or qmmp starts a
+  Spotify track, so Autoplay cannot pull qmmp back.

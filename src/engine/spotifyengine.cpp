@@ -228,6 +228,9 @@ void SpotifyEngine::reportTrack(const QString &path, const SpotifyTrack &track)
 void SpotifyEngine::reportFinished()
 {
     StateHandler::instance()->sendFinished();
+    // queued after EVENT_FINISHED: a Spotify next track played from MediaPlayer::playNext
+    // cancels the finish pause first; otherwise this (or ~SpotifyEngine) sends it
+    QTimer::singleShot(0, this, [this] { m_logic.flushPendingPause(); });
 }
 
 void SpotifyEngine::reportError(const QString &message, bool fatal)
