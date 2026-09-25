@@ -39,15 +39,7 @@ PlayListDialog::PlayListDialog(QWidget *parent) : QDialog(parent)
             self->m_playlists = readable;
             for(const SpotifyPlaylist &playlist : readable)
                 self->m_list->addItem(tr("%1 (%2 tracks)").arg(playlist.name).arg(playlist.trackCount));
-            if(!result.ok)
-            {
-                self->m_status->setText(result.message);
-                return;
-            }
-            const int hiddenCount = playlists.size() - readable.size();
-            self->m_status->setText(hiddenCount > 0
-                ? tr("%n playlist(s) by other users hidden — Spotify doesn't let apps like this read them", "", hiddenCount)
-                : QString());
+            self->m_status->setText(result.ok ? QString() : result.message);
         });
     });
 }
