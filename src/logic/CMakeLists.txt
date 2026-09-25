@@ -4,6 +4,7 @@ add_library(spotifylogic STATIC
     playlistfilter.cpp
     apipolicy.cpp
     enginelogic.cpp
+    volumelogic.cpp
     followerlogic.cpp
     pollpolicy.cpp
 )

@@ -69,21 +69,21 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
             switch(decision.action)
             {
             case ApiDecision::Success:
-                callback(ApiResult { true, status, QString(), false, data });
+                callback(ApiResult { true, status, QString(), false, data, QString() });
                 break;
             case ApiDecision::RefreshAndRetry:
                 m_auth->refresh([=](bool refreshed) {
                     if(refreshed)
                         request(verb, url, body, callback, true);
                     else
-                        callback(ApiResult { false, status, u"Spotify session expired, please log in again"_s, false, data });
+                        callback(ApiResult { false, status, u"Spotify session expired, please log in again"_s, false, data, QString() });
                 });
                 break;
             case ApiDecision::RetryAfter:
                 QTimer::singleShot(decision.retryAfterMs, this, [=] { request(verb, url, body, callback, true); });
                 break;
             case ApiDecision::Fail:
-                callback(ApiResult { false, status, decision.message, decision.deviceProblem, data });
+                callback(ApiResult { false, status, decision.message, decision.deviceProblem, data, decision.reason });
                 break;
             }
         });
@@ -173,6 +173,13 @@ void SpotifyApi::queue(const QString &deviceId, const QString &uri, Callback cal
 void SpotifyApi::next(const QString &deviceId, Callback callback)
 {
     request("POST", endpoint(u"/me/player/next"_s, deviceQuery(deviceId)), QByteArray(), callback);
+}
+
+void SpotifyApi::setVolume(const QString &deviceId, int percent, Callback callback)
+{
+    QUrlQuery query = deviceQuery(deviceId);
+    query.addQueryItem(u"volume_percent"_s, QString::number(percent));
+    request("PUT", endpoint(u"/me/player/volume"_s, query), QByteArray(), callback);
 }
 
 void SpotifyApi::myPlaylists(ListCallback<SpotifyPlaylist> callback)

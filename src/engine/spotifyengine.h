@@ -6,10 +6,11 @@
 #include <qmmp/abstractengine.h>
 #include "enginelogic.h"
 #include "spotifyapi.h"
+#include "volumelogic.h"
 
 class SpotifyClient;
 
-class SpotifyEngine : public AbstractEngine, private EngineSink
+class SpotifyEngine : public AbstractEngine, private EngineSink, private VolumeSink
 {
     Q_OBJECT
 public:
@@ -33,14 +34,20 @@ private:
     void reportTrack(const QString &path, const SpotifyTrack &track) override;
     void reportFinished() override;
     void reportError(const QString &message, bool fatal) override;
+    void apiSetVolume(int percent) override;
+    void setQmmpVolume(int percent) override;
+    void reportVolumeUnsupported() override;
 
     SpotifyApi::Callback notifyOnFailure() const;
     void publishTracks();
+    void scheduleVolumeSend();
 
     SpotifyClient *m_client;
     QElapsedTimer m_clock;
     EngineLogic m_logic;
     QTimer m_ticker;
+    VolumeLogic m_volume;
+    QTimer m_volumeTimer;
 };
 
 #endif

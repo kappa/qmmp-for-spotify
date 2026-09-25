@@ -5,22 +5,6 @@ short design check before implementation.
 
 ## High priority
 
-### Volume control (needed)
-
-qmmp's volume slider does nothing for Spotify playback: it drives qmmp's local output,
-which the Spotify engine does not use.
-
-Agreed direction (2026-09-24):
-- qmmp → device: while the Spotify engine is active, listen to `SoundCore::volumeChanged`
-  and `mutedChanged`; send `PUT /me/player/volume?volume_percent=N&device_id=…`,
-  debounced (~300 ms). Mute sends 0, unmute restores the previous level.
-- Device → qmmp: the polled player state carries `device.volume_percent`; when it changes
-  on the device (e.g. from the phone), set qmmp's volume. Ignore echoes of our own changes.
-- Debounce, echo suppression and mute handling as a pure, unit-tested unit in `src/logic`;
-  the engine only wires it.
-- Caveats: qmmp has one volume, so it carries over to local files; some devices reject
-  remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
-
 ## Normal priority
 
 ### Play Spotify-sourced playlists as Spotify contexts (wanted, needs a design round)

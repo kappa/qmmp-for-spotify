@@ -13,6 +13,7 @@ private slots:
     void longRateLimitFailsFast();
     void noActiveDevice();
     void passesSpotifyMessage();
+    void volumeControlDisallowed();
     void networkError();
 };
 
@@ -61,6 +62,16 @@ void TestApiPolicy::passesSpotifyMessage()
     const ApiDecision d = classifyReply(403, QString(), QByteArray(),
         R"({"error":{"status":403,"message":"Player command failed: Premium required","reason":"PREMIUM_REQUIRED"}})", false);
     QCOMPARE(d.message, u"Spotify: Player command failed: Premium required"_s);
+    QVERIFY(!d.deviceProblem);
+}
+
+void TestApiPolicy::volumeControlDisallowed()
+{
+    const ApiDecision d = classifyReply(403, QString(), QByteArray(),
+        R"({"error":{"status":403,"message":"Player command failed: Cannot control device volume","reason":"VOLUME_CONTROL_DISALLOW"}})", false);
+    QCOMPARE(d.action, ApiDecision::Fail);
+    QCOMPARE(d.reason, u"VOLUME_CONTROL_DISALLOW"_s);
+    QCOMPARE(d.message, u"Spotify: this device does not allow volume control"_s);
     QVERIFY(!d.deviceProblem);
 }
 

@@ -47,6 +47,8 @@ struct PlayerState
     bool isPlaying = false;
     qint64 progressMs = 0;
     SpotifyTrack track;
+    int volumePercent = -1;
+    bool supportsVolume = true;
 };
 
 template <typename T>

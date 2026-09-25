@@ -165,8 +165,7 @@ forms; load playlist and liked songs; token expiry (corrupt stored token).
 
 ## Out of scope
 
-Local audio decoding, being a Connect target, search, playlist editing, podcasts,
-volume control (possible later via `PUT /me/player/volume`).
+Local audio decoding, being a Connect target, search, playlist editing, podcasts.
 
 ## To verify during implementation
 
@@ -194,3 +193,8 @@ volume control (possible later via `PUT /me/player/volume`).
   advanced to it on its own, qmmp sends Spotify's skip-to-next instead of `play`, so the
   already-queued track is consumed instead of replayed; only if the queue call itself
   failed does qmmp fall back to `play`.
+- Volume control added: while a Spotify track is current, qmmp's volume slider and mute
+  drive the device (`PUT /me/player/volume`, debounced 300 ms; mute sends 0, unmute restores
+  the level), and volume changes on the device move qmmp's slider. Echoes of our own changes
+  are ignored; devices that disallow remote volume get one notice and the slider snaps back
+  to the device value. qmmp has one volume, so the level carries over to local files.

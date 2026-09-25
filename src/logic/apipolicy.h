@@ -12,6 +12,7 @@ struct ApiDecision
     int retryAfterMs = 0;
     QString message;
     bool deviceProblem = false;
+    QString reason;
 };
 
 ApiDecision classifyReply(int httpStatus, const QString &networkError, const QByteArray &retryAfter,

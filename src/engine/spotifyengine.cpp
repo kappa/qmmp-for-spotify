@@ -1,5 +1,6 @@
 #include <QPointer>
 #include <qmmp/inputsource.h>
+#include <qmmp/soundcore.h>
 #include <qmmp/statehandler.h>
 #include <qmmp/trackinfo.h>
 #include "spotifyclient.h"
@@ -9,16 +10,38 @@
 using namespace Qt::StringLiterals;
 
 SpotifyEngine::SpotifyEngine(QObject *parent)
-    : AbstractEngine(parent), m_client(SpotifyClient::instance()), m_logic(this, [this] { return m_clock.elapsed(); })
+    : AbstractEngine(parent), m_client(SpotifyClient::instance()), m_logic(this, [this] { return m_clock.elapsed(); }),
+      m_volume(this, [this] { return m_clock.elapsed(); })
 {
     m_clock.start();
     m_logic.setSelectedDevice(m_client->deviceId());
     m_logic.updateState(m_client->poller()->lastState());
+    m_volume.setSelectedDevice(m_client->deviceId());
+    SoundCore *core = SoundCore::instance();
+    m_volume.setQmmpState(core->volume(), core->isMuted());
     connect(m_client->poller(), &SpotifyPoller::stateChanged, this, [this](const PlayerState &state) {
         m_logic.updateState(state);
         publishTracks();
+        m_volume.updateState(state);
     });
-    connect(m_client, &SpotifyClient::deviceChanged, this, [this] { m_logic.setSelectedDevice(m_client->deviceId()); });
+    connect(m_client, &SpotifyClient::deviceChanged, this, [this] {
+        m_logic.setSelectedDevice(m_client->deviceId());
+        m_volume.setSelectedDevice(m_client->deviceId());
+    });
+    // SoundCore emits these even with no output open, which is always the case for this engine
+    connect(core, &SoundCore::volumeChanged, this, [this](int volume) {
+        m_volume.qmmpVolumeChanged(volume);
+        scheduleVolumeSend();
+    });
+    connect(core, &SoundCore::mutedChanged, this, [this](bool muted) {
+        m_volume.qmmpMutedChanged(muted);
+        scheduleVolumeSend();
+    });
+    m_volumeTimer.setSingleShot(true);
+    m_volumeTimer.setTimerType(Qt::PreciseTimer);
+    // precise timers never fire early; the margin absorbs millisecond rounding of the clock
+    m_volumeTimer.setInterval(int(VolumeLogic::kDebounceMs) + 5);
+    connect(&m_volumeTimer, &QTimer::timeout, this, [this] { m_volume.tick(); });
     m_ticker.setInterval(250);
     connect(&m_ticker, &QTimer::timeout, this, [this] {
         m_logic.tick();
@@ -130,6 +153,31 @@ void SpotifyEngine::apiNext()
     });
 }
 
+void SpotifyEngine::apiSetVolume(int percent)
+{
+    QPointer<SpotifyEngine> self(this);
+    SpotifyClient *client = m_client;
+    m_client->api()->setVolume(m_client->deviceId(), percent, [self, client](const ApiResult &result) {
+        if(result.ok)
+            return;
+        const bool disallowed = result.reason == "VOLUME_CONTROL_DISALLOW"_L1;
+        if(!disallowed)
+            client->notify(result.message);
+        if(self)
+            self->m_volume.setVolumeFailed(disallowed);
+    });
+}
+
+void SpotifyEngine::setQmmpVolume(int percent)
+{
+    SoundCore::instance()->setVolume(percent);
+}
+
+void SpotifyEngine::reportVolumeUnsupported()
+{
+    m_client->notify(u"Spotify: this device does not allow volume control"_s);
+}
+
 SpotifyApi::Callback SpotifyEngine::notifyOnFailure() const
 {
     SpotifyClient *client = m_client;
@@ -177,5 +225,15 @@ void SpotifyEngine::reportError(const QString &message, bool fatal)
 
 void SpotifyEngine::publishTracks()
 {
-    m_client->setEngineTracks(m_logic.trackIds(), m_logic.isAwaitingStart());
+    const QStringList ids = m_logic.trackIds();
+    m_client->setEngineTracks(ids, m_logic.isAwaitingStart());
+    // volume follows the device only while a Spotify track is current
+    m_volume.setActive(!ids.isEmpty());
+}
+
+// each change restarts the timer, so it fires once, kDebounceMs after the last change of a burst
+void SpotifyEngine::scheduleVolumeSend()
+{
+    if(m_volume.hasPendingSend())
+        m_volumeTimer.start();
 }

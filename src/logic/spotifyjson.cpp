@@ -79,6 +79,9 @@ PlayerState SpotifyJson::parsePlayerState(const QByteArray &json)
     state.hasPlayback = true;
     state.deviceId = device.value("id"_L1).toString();
     state.deviceName = device.value("name"_L1).toString();
+    const QJsonValue volume = device.value("volume_percent"_L1);
+    state.volumePercent = volume.isDouble() ? qBound(0, volume.toInt(), 100) : -1;
+    state.supportsVolume = device.value("supports_volume"_L1).toBool(true);
     state.isPlaying = object.value("is_playing"_L1).toBool();
     state.progressMs = qint64(object.value("progress_ms"_L1).toDouble());
     state.track = parseTrack(object.value("item"_L1).toObject());

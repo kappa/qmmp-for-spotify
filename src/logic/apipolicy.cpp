@@ -47,7 +47,11 @@ ApiDecision classifyReply(int httpStatus, const QString &networkError, const QBy
     const QJsonObject error = QJsonDocument::fromJson(body).object().value("error"_L1).toObject();
     const QString message = error.value("message"_L1).toString();
     const QString reason = error.value("reason"_L1).toString();
-    if(reason == "NO_ACTIVE_DEVICE"_L1 || message.contains("device"_L1, Qt::CaseInsensitive))
+    decision.reason = reason;
+    // its message ("Cannot control device volume") would pass for a device problem
+    if(reason == "VOLUME_CONTROL_DISALLOW"_L1)
+        decision.message = u"Spotify: this device does not allow volume control"_s;
+    else if(reason == "NO_ACTIVE_DEVICE"_L1 || message.contains("device"_L1, Qt::CaseInsensitive))
     {
         decision.deviceProblem = true;
         decision.message = u"Spotify: the selected device is not available. Pick one in Tools → Spotify → Device…"_s;

@@ -11,6 +11,7 @@ private slots:
     void playerStatePlaying();
     void playerStateNothingPlaying();
     void playerStateEpisode();
+    void playerStateVolume();
     void playlists();
     void trackItemsSkipUnplayable();
     void album();
@@ -60,6 +61,23 @@ void TestSpotifyJson::playerStateEpisode()
         "item":{"type":"episode","id":"e1","name":"Podcast"}})");
     QVERIFY(s.hasPlayback);
     QVERIFY(!s.track.isValid());
+}
+
+void TestSpotifyJson::playerStateVolume()
+{
+    const PlayerState s = SpotifyJson::parsePlayerState(R"({
+        "device":{"id":"d1","volume_percent":65,"supports_volume":true},"is_playing":true})");
+    QCOMPARE(s.volumePercent, 65);
+    QVERIFY(s.supportsVolume);
+
+    const PlayerState locked = SpotifyJson::parsePlayerState(R"({
+        "device":{"id":"d1","volume_percent":null,"supports_volume":false},"is_playing":true})");
+    QCOMPARE(locked.volumePercent, -1);
+    QVERIFY(!locked.supportsVolume);
+
+    const PlayerState bare = SpotifyJson::parsePlayerState(R"({"device":{"id":"d1"},"is_playing":true})");
+    QCOMPARE(bare.volumePercent, -1);
+    QVERIFY(bare.supportsVolume);
 }
 
 void TestSpotifyJson::playlists()
