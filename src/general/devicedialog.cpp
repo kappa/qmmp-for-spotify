@@ -11,6 +11,7 @@
 DeviceDialog::DeviceDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Spotify Device"));
+    resize(420, 320);
     m_list = new QListWidget(this);
     m_status = new QLabel(this);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
