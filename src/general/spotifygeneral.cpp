@@ -30,7 +30,6 @@ SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
 
 SpotifyGeneral::~SpotifyGeneral()
 {
-    UiHelper::instance()->removeAction(m_menu->menuAction());
     delete m_menu;
 }
 
