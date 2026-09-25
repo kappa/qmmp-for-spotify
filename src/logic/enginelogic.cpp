@@ -27,6 +27,8 @@ EngineLogic::EngineLogic(EngineSink *sink, Clock clock) : m_sink(sink), m_clock(
 
 void EngineLogic::setSelectedDevice(const QString &deviceId)
 {
+    if(deviceId != m_device)
+        m_deviceName.clear();
     m_device = deviceId;
 }
 
@@ -129,10 +131,12 @@ void EngineLogic::stop()
 void EngineLogic::updateState(const PlayerState &state)
 {
     m_last = state;
+    const bool onDevice = state.hasPlayback && state.deviceId == m_device;
+    if(onDevice && !state.deviceName.isEmpty())
+        m_deviceName = state.deviceName;
     if(m_current.isEmpty() || m_state == EngineState::Stopped)
         return;
 
-    const bool onDevice = state.hasPlayback && state.deviceId == m_device;
     if(onDevice && state.track.id == m_current.id)
     {
         if(!m_awaiting && m_state == EngineState::Playing && !state.isPlaying && state.progressMs < kRewoundMs && nearEnd())
@@ -148,6 +152,10 @@ void EngineLogic::updateState(const PlayerState &state)
     else if(!m_awaiting && m_state == EngineState::Playing && nearEnd())
     {
         finish();
+    }
+    else if(!onDevice && !m_awaiting && m_state == EngineState::Playing && !inCommandGrace())
+    {
+        deviceStopped();
     }
     // a poll may arrive inside the queue-lead window
     maybeQueueNext();
@@ -304,6 +312,16 @@ void EngineLogic::finish()
     m_trackReported = false;
     m_sink->reportFinished();
     setState(EngineState::Stopped);
+}
+
+// the device was closed or playback moved elsewhere: stop the clock and say so once;
+// a later poll of our track playing on the device resumes following through apply()
+void EngineLogic::deviceStopped()
+{
+    m_progressMs = elapsed();
+    m_progressAt = m_clock();
+    setState(EngineState::Paused);
+    m_sink->reportNotice(u"Spotify: playback stopped on %1"_s.arg(m_deviceName.isEmpty() ? u"the device"_s : m_deviceName));
 }
 
 void EngineLogic::maybeQueueNext()

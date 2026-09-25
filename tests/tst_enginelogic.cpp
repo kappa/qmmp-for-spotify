@@ -35,6 +35,7 @@ public:
         calls << (fatal ? u"fatal"_s : u"error"_s);
         lastError = message;
     }
+    void reportNotice(const QString &message) override { calls << u"notice "_s + message; }
 };
 
 PlayerState deviceState(const QString &device, const QString &trackId, qint64 progressMs, bool isPlaying = true)
@@ -79,7 +80,10 @@ private slots:
     void doubleStopStillPauses();
     void doubleStopThenRestartPlaysFromStart();
     void stopLeavesForeignTrackAlone();
-    void ignoresOtherDevices();
+    void pausesWhenDevicePlaybackEnds();
+    void pausesWhenPlaybackMovesToOtherDevice();
+    void followsAgainWhenDeviceReturns();
+    void vanishedPlaybackIgnoredWhileAwaitingOrInGrace();
     void interpolatesElapsed();
     void playFailureClearsTracks();
     void newTrackReportsWithinStaleCommandGrace();
@@ -355,10 +359,56 @@ void TestEngineLogic::stopLeavesForeignTrackAlone()
     QCOMPARE(m_sink.calls, QStringList { u"state Stopped"_s });
 }
 
-void TestEngineLogic::ignoresOtherDevices()
+void TestEngineLogic::pausesWhenDevicePlaybackEnds()
+{
+    PlayerState named = deviceState(u"dev"_s, u"a"_s, 0);
+    named.deviceName = u"Web Player"_s;
+    m_logic->updateState(named);
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_sink.calls.clear();
+    m_now += 5000;
+    m_logic->updateState(PlayerState());
+    QCOMPARE(m_sink.calls, (QStringList { u"state Paused"_s, u"notice Spotify: playback stopped on Web Player"_s }));
+    QCOMPARE(m_logic->elapsed(), qint64(5000));
+    m_now += 5000;
+    m_logic->updateState(PlayerState());
+    QCOMPARE(m_sink.calls.size(), 2);
+    QCOMPARE(m_logic->elapsed(), qint64(5000));
+}
+
+void TestEngineLogic::pausesWhenPlaybackMovesToOtherDevice()
 {
     startPlaying(u"a"_s);
-    m_logic->updateState(deviceState(u"phone"_s, u"z"_s, 1000, false));
+    m_logic->updateState(deviceState(u"phone"_s, u"z"_s, 1000));
+    QCOMPARE(m_sink.calls, (QStringList { u"state Paused"_s, u"notice Spotify: playback stopped on the device"_s }));
+    QCOMPARE(m_logic->state(), EngineState::Paused);
+}
+
+void TestEngineLogic::followsAgainWhenDeviceReturns()
+{
+    startPlaying(u"a"_s);
+    m_logic->updateState(PlayerState());
+    m_sink.calls.clear();
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 7000));
+    QCOMPARE(m_sink.calls, QStringList { u"state Playing"_s });
+    QCOMPARE(m_logic->elapsed(), qint64(7000));
+}
+
+void TestEngineLogic::vanishedPlaybackIgnoredWhileAwaitingOrInGrace()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_sink.calls.clear();
+    m_logic->updateState(PlayerState());
+    QVERIFY(m_sink.calls.isEmpty());
+
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0));
+    m_logic->pause();
+    m_logic->pause();
+    m_sink.calls.clear();
+    m_now += 2000;
+    m_logic->updateState(PlayerState());
     QVERIFY(m_sink.calls.isEmpty());
     QCOMPARE(m_logic->state(), EngineState::Playing);
 }

@@ -35,6 +35,7 @@ private:
     void reportTrack(const QString &path, const SpotifyTrack &track) override;
     void reportFinished() override;
     void reportError(const QString &message, bool fatal) override;
+    void reportNotice(const QString &message) override;
     void apiSetVolume(int percent) override;
     void setQmmpVolume(int percent) override;
     void reportVolumeUnsupported() override;

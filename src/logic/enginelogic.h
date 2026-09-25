@@ -24,6 +24,7 @@ public:
     virtual void reportTrack(const QString &path, const SpotifyTrack &track) = 0;
     virtual void reportFinished() = 0;
     virtual void reportError(const QString &message, bool fatal) = 0;
+    virtual void reportNotice(const QString &message) = 0;
 };
 
 class EngineLogic
@@ -70,6 +71,7 @@ private:
     void fail(const QString &message);
     void switchToNext(bool startNow);
     void finish();
+    void deviceStopped();
     void skipOnDevice();
     void maybeQueueNext();
     bool nearEnd() const;
@@ -79,6 +81,7 @@ private:
     EngineSink *m_sink;
     Clock m_clock;
     QString m_device;
+    QString m_deviceName;
     PlayerState m_last;
     Entry m_current;
     Entry m_next;

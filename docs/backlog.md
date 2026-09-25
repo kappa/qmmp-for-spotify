@@ -50,10 +50,3 @@ on them — skip to the next track, as Spotify does.
 - Related, from the final code review: when a track change fails on a systemic error, the
   previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
   pause was cancelled). Pause the device on that path.
-
-### Closing the device leaves qmmp "playing"
-
-Manual test 2026-09-24: with a Spotify track playing on the web player, closing the web
-player leaves qmmp in Playing with the position still advancing. Expected: qmmp notices
-the device is gone (paused/stopped) and shows it. About 30 s later a notice appears:
-"the selected device is not available". Not yet investigated.

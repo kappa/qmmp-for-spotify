@@ -240,6 +240,11 @@ void SpotifyEngine::reportError(const QString &message, bool fatal)
     StateHandler::instance()->dispatch(fatal ? Qmmp::FatalError : Qmmp::NormalError);
 }
 
+void SpotifyEngine::reportNotice(const QString &message)
+{
+    m_client->notify(message);
+}
+
 void SpotifyEngine::publishTracks()
 {
     const QStringList ids = m_logic.trackIds();

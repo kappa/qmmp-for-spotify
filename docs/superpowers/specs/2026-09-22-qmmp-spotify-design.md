@@ -212,3 +212,8 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 - A link that cannot be expanded is removed from the playlist (it could not be played
   either). A playlist link answered with 403 or 404 shows "Spotify: this app can't read
   other users' playlists" (Development Mode apps cannot read playlists owned by others).
+- While qmmp plays a track (not waiting for the device to start, not right after a
+  pause/resume/seek, not near the track's end), a poll with no playback on the selected
+  device (the device was closed, or playback moved to another device) turns qmmp to Paused
+  with one notice "Spotify: playback stopped on <device name>". If the device later reports
+  the track playing again, qmmp follows it as usual.
