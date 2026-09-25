@@ -176,7 +176,7 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 
 ## Changes during implementation
 
-- The follower is edge-triggered: it acts only when the selected device switches track or starts playing compared with the previous poll. qmmp therefore does not take over playback at startup if the device is already playing, and a stale poll after Stop cannot restart playback.
+- The follower is edge-triggered: it acts only when the selected device switches track or starts playing compared with the previous poll. A stale poll after Stop therefore cannot restart playback.
 - Login success and failure are reported through the plugin's notices, so the outcome is shown even if the settings dialog was closed; a new login releases any pending callback listener first.
 - On Qt 6.11 a rejected token refresh arrives only as requestFailed(ServerError); that logs the user out (a transient 5xx does too), network errors do not.
 - Device problems and all other play failures dispatch `FatalError`, not `NormalError`: qmmp stops with the notice instead of trying every following track of the playlist (e.g. when logged out on a long playlist). Failures of a play that was already superseded or stopped are ignored.
@@ -206,3 +206,6 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   403 for an already-paused device is not shown) and the follower ignores the track the
   device was on until the device is seen paused, plays another track, or qmmp starts a
   Spotify track, so Autoplay cannot pull qmmp back.
+- At startup the follower compares the first poll with an empty state, so qmmp attaches to
+  what the selected device is already playing (selects or appends the track and shows its
+  position) instead of waiting for the next track change.

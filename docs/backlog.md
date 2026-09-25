@@ -51,16 +51,6 @@ on them — skip to the next track, as Spotify does.
   previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
   pause was cancelled). Pause the device on that path.
 
-### Attach to the device's ongoing playback at startup
-
-After a qmmp restart the login survives, but qmmp does not show what the device is
-already playing until the next track starts: the follower is edge-triggered and treats
-the first poll as a baseline (ruling during Task 13, to avoid grabbing playback at startup
-and to protect Stop from stale polls). Seen in manual testing 2026-09-24.
-Proposed: the first poll after startup attaches when the selected device is playing
-(select or append the current track and show its position). Safe for Stop, since nothing
-has been stopped at startup. Change in `Follower`/`isFollowTrigger` plus a test.
-
 ### Adding another user's playlist link leaves the raw link behind
 
 Add URL with a playlist owned by someone else: Spotify answers "Resource not found"

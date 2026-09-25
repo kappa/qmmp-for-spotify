@@ -37,6 +37,7 @@ private slots:
     void triggerFiresOnTrackChange();
     void triggerFiresOnResume();
     void triggerIgnoresOtherDevice();
+    void triggerFiresOnFirstPollWhenPlaying();
 };
 
 void TestFollowerLogic::ignoresWhileEngineAwaiting()
@@ -123,6 +124,14 @@ void TestFollowerLogic::triggerFiresOnResume()
 void TestFollowerLogic::triggerIgnoresOtherDevice()
 {
     QVERIFY(!isFollowTrigger(playing(u"dev"_s, u"x"_s), playing(u"phone"_s, u"y"_s), u"dev"_s));
+}
+
+void TestFollowerLogic::triggerFiresOnFirstPollWhenPlaying()
+{
+    QVERIFY(isFollowTrigger(PlayerState(), playing(u"dev"_s, u"x"_s), u"dev"_s));
+    QVERIFY(!isFollowTrigger(PlayerState(), playing(u"dev"_s, u"x"_s, false), u"dev"_s));
+    QVERIFY(!isFollowTrigger(PlayerState(), playing(u"phone"_s, u"x"_s), u"dev"_s));
+    QVERIFY(!isFollowTrigger(PlayerState(), PlayerState(), u"dev"_s));
 }
 
 QTEST_APPLESS_MAIN(TestFollowerLogic)
