@@ -96,6 +96,10 @@ private:
     bool m_pendingPause = false;
     // the pause play() cancelled, restored if that play fails
     bool m_cancelledPause = false;
+    // start timeouts since the device last started one of our tracks: the second one stops qmmp
+    int m_startTimeouts = 0;
+    // the active command is the skip to the already-queued next track
+    bool m_skippingToQueued = false;
     QString m_stoppedId;
     quint64 m_generation = 0;
     quint64 m_activeGeneration = 0;

@@ -175,7 +175,8 @@ void EngineLogic::playFailed(quint64 generation, const QString &message, bool sy
 {
     if(generation == 0 || generation != m_activeGeneration)
         return;
-    fail(message, systemic);
+    // a failed skip to the queued track is about our queue mechanism, not the track
+    fail(message, systemic || m_skippingToQueued);
 }
 
 // the queue call failed (or its result never reached us): the entry never reached the
@@ -187,8 +188,13 @@ void EngineLogic::queueFailed()
 
 void EngineLogic::checkStartTimeout()
 {
-    if(m_awaiting && m_activeGeneration != 0 && m_clock() - m_playSentAt >= kStartTimeoutMs)
-        fail(u"Spotify: the device did not start playing"_s, false);
+    if(!m_awaiting || m_activeGeneration == 0 || m_clock() - m_playSentAt < kStartTimeoutMs)
+        return;
+    // one silent track is skipped; a device that starts none of two in a row is the problem
+    const bool systemic = ++m_startTimeouts >= 2;
+    if(systemic)
+        m_startTimeouts = 0;
+    fail(u"Spotify: the device did not start playing"_s, systemic);
 }
 
 void EngineLogic::tick()
@@ -228,6 +234,7 @@ void EngineLogic::apply(const PlayerState &state)
 {
     m_awaiting = false;
     m_cancelledPause = false;
+    m_startTimeouts = 0;
     m_track = state.track;
     if(!inCommandGrace())
     {
@@ -245,6 +252,7 @@ void EngineLogic::apply(const PlayerState &state)
 void EngineLogic::startOnDevice(qint64 positionMs)
 {
     m_awaiting = true;
+    m_skippingToQueued = false;
     m_activeGeneration = ++m_generation;
     m_playSentAt = m_clock();
     m_sink->apiPlay(trackUri(m_current.id), positionMs, m_activeGeneration);
@@ -255,6 +263,7 @@ void EngineLogic::startOnDevice(qint64 positionMs)
 void EngineLogic::skipOnDevice()
 {
     m_awaiting = true;
+    m_skippingToQueued = true;
     m_activeGeneration = ++m_generation;
     m_playSentAt = m_clock();
     m_sink->apiNext();

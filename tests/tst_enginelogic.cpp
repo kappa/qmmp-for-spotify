@@ -100,6 +100,10 @@ private slots:
     void ignoresFailureAfterStop();
     void ignoresFailureOfSupersededPlay();
     void skipsWhenDeviceDoesNotStart();
+    void secondConsecutiveStartTimeoutStops();
+    void startTimeoutAfterSuccessfulStartSkips();
+    void failedSkipToQueuedTrackStops();
+    void failureAfterStartSendsNoStalePause();
     void startTimeoutIgnoredOnceStarted();
 
 private:
@@ -628,6 +632,69 @@ void TestEngineLogic::startTimeoutIgnoredOnceStarted()
     m_logic->checkStartTimeout();
     QVERIFY(m_sink.calls.isEmpty());
     QCOMPARE(m_logic->state(), EngineState::Playing);
+}
+
+void TestEngineLogic::secondConsecutiveStartTimeoutStops()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_sink.calls.clear();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QCOMPARE(m_sink.lastError, u"Spotify: the device did not start playing"_s);
+}
+
+void TestEngineLogic::startTimeoutAfterSuccessfulStartSkips()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 300));
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/c"_s));
+    m_logic->play();
+    m_sink.calls.clear();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    QCOMPARE(m_sink.calls, QStringList { u"error"_s });
+}
+
+// the skip-to-queued call is about our queue mechanism, not the track: stop, do not skip
+void TestEngineLogic::failedSkipToQueuedTrackStops()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->tick();
+    m_now += 500;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_sink.calls.last(), u"next"_s);
+    m_logic->playFailed(m_logic->activeGeneration(), u"gone"_s, false);
+    QCOMPARE(m_sink.calls.last(), u"fatal"_s);
+    QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+void TestEngineLogic::failureAfterStartSendsNoStalePause()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 300));
+    m_logic->playFailed(m_sink.lastGeneration, u"late"_s, false);
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
 }
 
 QTEST_APPLESS_MAIN(TestEngineLogic)
