@@ -179,8 +179,8 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 - The follower is edge-triggered: it acts only when the selected device switches track or starts playing compared with the previous poll. A stale poll after Stop therefore cannot restart playback.
 - Login success and failure are reported through the plugin's notices, so the outcome is shown even if the settings dialog was closed; a new login releases any pending callback listener first.
 - On Qt 6.11 a rejected token refresh arrives only as requestFailed(ServerError); that logs the user out (a transient 5xx does too), network errors do not.
-- Device problems and all other play failures dispatch `FatalError`, not `NormalError`: qmmp stops with the notice instead of trying every following track of the playlist (e.g. when logged out on a long playlist). Failures of a play that was already superseded or stopped are ignored.
-- If the device has not started the requested track 10 s after `play`, playback fails with "Spotify: the device did not start playing" (`FatalError`).
+- Play failures are split (superseded by the unavailable-tracks bullet below): systemic ones dispatch `FatalError`, so qmmp stops with the notice instead of trying every following track of the playlist (e.g. when logged out on a long playlist). Failures of a play that was already superseded or stopped are ignored.
+- If the device has not started the requested track 10 s after `play`, playback fails with "Spotify: the device did not start playing" (`NormalError`, qmmp skips to the next track).
 - `stop()` defers its pause to the next event-loop turn; a `play()` in the same call stack (Next, Previous, double-click, restart) cancels it, so no pause/play race reaches the device. Replaying the track that was just stopped sends play from 0 instead of adopting the device's playback. Stop pauses whenever qmmp believes it is playing its track on the device; a paused device is left alone.
 - Loaded Spotify playlists are named "Spotify: <playlist name>"; only such playlists are reused and refilled.
 - A 429 with `Retry-After` above 10 s fails at once with "Spotify: rate limited, try again in N min" instead of waiting.
@@ -220,3 +220,12 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   device (the device was closed, or playback moved to another device) turns qmmp to Paused
   with one notice "Spotify: playback stopped on <device name>". If the device later reports
   the track playing again, qmmp follows it as usual.
+- Unavailable tracks are shown and skipped: loaded playlists, Liked Songs and expanded links
+  keep tracks with `is_playable: false` (Spotify returns the flag without `market` too). A
+  play failure that every track would hit (network, not logged in, 401 session expired, 429,
+  5xx, device problems, `PREMIUM_REQUIRED`) is `FatalError`: qmmp stops with the notice. Any
+  other failure (other 400/403/404, "Restriction violated", the 10 s start timeout) is
+  `NormalError`: qmmp skips to the next track and stops by itself after a whole playlist of
+  consecutive failures. If the failed play had cancelled a deferred pause (Next during
+  playback, the next track after a finish), that pause comes back, so when qmmp stops the
+  previous track does not keep playing on the device.

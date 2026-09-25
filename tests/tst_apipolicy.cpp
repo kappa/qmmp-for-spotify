@@ -16,6 +16,8 @@ private slots:
     void volumeControlDisallowed();
     void networkError();
     void pauseOfPausedDeviceIsHarmless();
+    void systemicPlayFailures_data();
+    void systemicPlayFailures();
 };
 
 void TestApiPolicy::success()
@@ -89,6 +91,35 @@ void TestApiPolicy::pauseOfPausedDeviceIsHarmless()
     QVERIFY(isAlreadyPausedReply(403, u"ALREADY_PAUSED"_s));
     QVERIFY(!isAlreadyPausedReply(403, u"PREMIUM_REQUIRED"_s));
     QVERIFY(!isAlreadyPausedReply(404, u"UNKNOWN"_s));
+}
+
+void TestApiPolicy::systemicPlayFailures_data()
+{
+    QTest::addColumn<int>("status");
+    QTest::addColumn<bool>("deviceProblem");
+    QTest::addColumn<QString>("reason");
+    QTest::addColumn<bool>("systemic");
+    QTest::newRow("network or not logged in") << 0 << false << QString() << true;
+    QTest::newRow("session expired") << 401 << false << QString() << true;
+    QTest::newRow("rate limited") << 429 << false << QString() << true;
+    QTest::newRow("server error") << 500 << false << QString() << true;
+    QTest::newRow("bad gateway") << 502 << false << QString() << true;
+    QTest::newRow("no active device") << 404 << true << u"NO_ACTIVE_DEVICE"_s << true;
+    QTest::newRow("device not found") << 404 << true << QString() << true;
+    QTest::newRow("premium required") << 403 << false << u"PREMIUM_REQUIRED"_s << true;
+    QTest::newRow("restriction violated") << 403 << false << u"UNKNOWN"_s << false;
+    QTest::newRow("forbidden") << 403 << false << QString() << false;
+    QTest::newRow("not found") << 404 << false << QString() << false;
+    QTest::newRow("bad request") << 400 << false << QString() << false;
+}
+
+void TestApiPolicy::systemicPlayFailures()
+{
+    QFETCH(int, status);
+    QFETCH(bool, deviceProblem);
+    QFETCH(QString, reason);
+    QFETCH(bool, systemic);
+    QCOMPARE(isSystemicPlayFailure(status, deviceProblem, reason), systemic);
 }
 
 QTEST_APPLESS_MAIN(TestApiPolicy)

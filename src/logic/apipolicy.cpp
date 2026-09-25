@@ -72,3 +72,10 @@ bool isAlreadyPausedReply(int httpStatus, const QString &reason)
     // Spotify reports it as "Player command failed: Restriction violated", reason UNKNOWN
     return httpStatus == 403 && (reason == "UNKNOWN"_L1 || reason == "ALREADY_PAUSED"_L1);
 }
+
+bool isSystemicPlayFailure(int httpStatus, bool deviceProblem, const QString &reason)
+{
+    // status 0: no network, or not logged in; 401 here means the session could not be refreshed
+    return httpStatus == 0 || httpStatus == 401 || httpStatus == 429 || httpStatus >= 500 || deviceProblem
+           || reason == "PREMIUM_REQUIRED"_L1;
+}

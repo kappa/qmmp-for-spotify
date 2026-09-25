@@ -31,7 +31,7 @@ SpotifyPage<T> parsePage(const QJsonObject &object, Parser parseItem)
 SpotifyTrack SpotifyJson::parseTrack(const QJsonObject &object, const QString &albumName)
 {
     const QString type = object.value("type"_L1).toString(u"track"_s);
-    if(type != "track"_L1 || object.value("is_local"_L1).toBool() || !object.value("is_playable"_L1).toBool(true))
+    if(type != "track"_L1 || object.value("is_local"_L1).toBool())
         return SpotifyTrack();
 
     SpotifyTrack track;

@@ -52,6 +52,7 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
 void EngineLogic::play()
 {
     // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
+    m_cancelledPause = m_pendingPause;
     m_pendingPause = false;
     const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
     m_stoppedId.clear();
@@ -170,11 +171,11 @@ void EngineLogic::flushPendingPause()
     m_sink->apiPause();
 }
 
-void EngineLogic::playFailed(quint64 generation, const QString &message)
+void EngineLogic::playFailed(quint64 generation, const QString &message, bool systemic)
 {
     if(generation == 0 || generation != m_activeGeneration)
         return;
-    fail(message);
+    fail(message, systemic);
 }
 
 // the queue call failed (or its result never reached us): the entry never reached the
@@ -187,7 +188,7 @@ void EngineLogic::queueFailed()
 void EngineLogic::checkStartTimeout()
 {
     if(m_awaiting && m_activeGeneration != 0 && m_clock() - m_playSentAt >= kStartTimeoutMs)
-        fail(u"Spotify: the device did not start playing"_s);
+        fail(u"Spotify: the device did not start playing"_s, false);
 }
 
 void EngineLogic::tick()
@@ -226,6 +227,7 @@ void EngineLogic::setState(EngineState state)
 void EngineLogic::apply(const PlayerState &state)
 {
     m_awaiting = false;
+    m_cancelledPause = false;
     m_track = state.track;
     if(!inCommandGrace())
     {
@@ -258,9 +260,14 @@ void EngineLogic::skipOnDevice()
     m_sink->apiNext();
 }
 
-// every play failure is fatal: qmmp stops instead of trying each following track
-void EngineLogic::fail(const QString &message)
+// a systemic failure (FatalError) stops qmmp; a track-specific one (NormalError) makes qmmp
+// skip to the next track, and qmmp itself stops after a whole playlist of failures. The
+// pause the failed play cancelled comes back: the next play cancels it again, qmmp's stop
+// sends it, so the previous track does not keep playing on the device.
+void EngineLogic::fail(const QString &message, bool systemic)
 {
+    m_pendingPause = m_cancelledPause;
+    m_cancelledPause = false;
     m_current = Entry();
     m_next = Entry();
     m_nextQueued = false;
@@ -268,7 +275,7 @@ void EngineLogic::fail(const QString &message)
     m_trackReported = false;
     m_activeGeneration = 0;
     m_state = EngineState::Stopped;
-    m_sink->reportError(message, true);
+    m_sink->reportError(message, systemic);
 }
 
 void EngineLogic::switchToNext(bool startNow)

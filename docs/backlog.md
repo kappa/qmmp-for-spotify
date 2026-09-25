@@ -29,24 +29,3 @@ Direction (2026-09-24):
 - End of playlist (decided 2026-09-24): in context mode qmmp follows the server (Spotify's
   Autoplay may continue, qmmp follows it); for custom or edited playlists (track-by-track
   mode) qmmp pauses the device when its playlist ends.
-
-### Unavailable tracks: show them, skip them on play (wanted)
-
-Alex (2026-09-24): show all songs in loaded playlists, even unplayable ones, but never stop
-on them — skip to the next track, as Spotify does.
-- Today every play failure stops qmmp (ruling from the final review, made to stop qmmp
-  walking a whole playlist on errors that affect every track). Split the errors instead:
-  track-specific (unavailable, removed) → skip to the next track; systemic (not logged in,
-  device gone, no network, Premium required, rate limited) → stop with a notice.
-- Stop rule: rely on qmmp's built-in guard — on a track error qmmp skips to the next track
-  and stops after trackCount consecutive failures (`qmmpui/mediaplayer.cpp:130-136`), so an
-  all-unplayable playlist stops after one pass. Track-specific failures must therefore be
-  reported as NormalError (skip), systemic ones as FatalError (stop).
-- Loading: `parseTrack` currently drops tracks with `is_playable: false`; keep them
-  (optionally marked) instead.
-- Verify first with the CLI: whether `market` on playlist/liked-songs requests still makes
-  Development Mode return `is_playable` / `restrictions` (documented on Get Playlist Items;
-  not mentioned in the Feb 2026 migration guide).
-- Related, from the final code review: when a track change fails on a systemic error, the
-  previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
-  pause was cancelled). Pause the device on that path.

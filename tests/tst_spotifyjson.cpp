@@ -13,7 +13,7 @@ private slots:
     void playerStateEpisode();
     void playerStateVolume();
     void playlists();
-    void trackItemsSkipUnplayable();
+    void trackItemsKeepUnplayable();
     void album();
     void displayName();
     void userId();
@@ -96,7 +96,7 @@ void TestSpotifyJson::playlists()
     QCOMPARE(page.next, u"https://api.spotify.com/v1/me/playlists?offset=50&limit=50"_s);
 }
 
-void TestSpotifyJson::trackItemsSkipUnplayable()
+void TestSpotifyJson::trackItemsKeepUnplayable()
 {
     const SpotifyPage<SpotifyTrack> page = SpotifyJson::parseTrackItems(R"({"items":[
         {"track":{"type":"track","id":"t1","name":"One","duration_ms":1000,"artists":[],"album":{"name":"X"}}},
@@ -104,11 +104,12 @@ void TestSpotifyJson::trackItemsSkipUnplayable()
         {"track":{"type":"track","id":null,"name":"Local","is_local":true}},
         {"track":{"type":"episode","id":"e1","name":"Episode"}},
         {"track":null},
-        {"track":{"type":"track","id":"t3","name":"Gone","is_playable":false}}],
+        {"track":{"type":"track","id":"t3","name":"Gone","is_playable":false,"restrictions":{"reason":"market"}}}],
         "next":null})");
-    QCOMPARE(page.items.size(), 2);
+    QCOMPARE(page.items.size(), 3);
     QCOMPARE(page.items.at(0).id, u"t1"_s);
     QCOMPARE(page.items.at(1).album, u"Y"_s);
+    QCOMPARE(page.items.at(2).id, u"t3"_s);
     QVERIFY(page.next.isEmpty());
 }
 

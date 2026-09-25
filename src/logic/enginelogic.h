@@ -44,7 +44,7 @@ public:
     void stop();
     void flushPendingPause();
     void updateState(const PlayerState &state);
-    void playFailed(quint64 generation, const QString &message);
+    void playFailed(quint64 generation, const QString &message, bool systemic);
     void queueFailed();
     void checkStartTimeout();
     void tick();
@@ -68,7 +68,7 @@ private:
     void setState(EngineState state);
     void apply(const PlayerState &state);
     void startOnDevice(qint64 positionMs);
-    void fail(const QString &message);
+    void fail(const QString &message, bool systemic);
     void switchToNext(bool startNow);
     void finish();
     void deviceStopped();
@@ -94,6 +94,8 @@ private:
     qint64 m_progressAt = 0;
     qint64 m_commandAt = -1;
     bool m_pendingPause = false;
+    // the pause play() cancelled, restored if that play fails
+    bool m_cancelledPause = false;
     QString m_stoppedId;
     quint64 m_generation = 0;
     quint64 m_activeGeneration = 0;

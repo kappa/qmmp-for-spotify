@@ -99,7 +99,8 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
         client->poller()->pollSoon();
         if(self && !result.ok)
         {
-            self->m_logic.playFailed(generation, result.message);
+            self->m_logic.playFailed(generation, result.message,
+                                     isSystemicPlayFailure(result.status, result.deviceProblem, result.reason));
             self->publishTracks();
         }
     });
@@ -156,7 +157,8 @@ void SpotifyEngine::apiNext()
         client->poller()->pollSoon();
         if(self && !result.ok)
         {
-            self->m_logic.playFailed(generation, result.message);
+            self->m_logic.playFailed(generation, result.message,
+                                     isSystemicPlayFailure(result.status, result.deviceProblem, result.reason));
             self->publishTracks();
         }
     });

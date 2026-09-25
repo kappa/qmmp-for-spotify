@@ -85,7 +85,11 @@ private slots:
     void followsAgainWhenDeviceReturns();
     void vanishedPlaybackIgnoredWhileAwaitingOrInGrace();
     void interpolatesElapsed();
-    void playFailureClearsTracks();
+    void systemicFailureStops();
+    void trackFailureSkips();
+    void systemicFailureOnTrackChangePausesPreviousTrack();
+    void failureOnFirstPlayLeavesDeviceAlone();
+    void skippedFailuresPauseOnlyWhenQmmpGivesUp();
     void newTrackReportsWithinStaleCommandGrace();
     void restartPlaysFromStartWithoutPause();
     void restartWhilePausedPlaysFromStart();
@@ -95,7 +99,7 @@ private slots:
     void adoptsAfterStopWasFlushed();
     void ignoresFailureAfterStop();
     void ignoresFailureOfSupersededPlay();
-    void failsWhenDeviceDoesNotStart();
+    void skipsWhenDeviceDoesNotStart();
     void startTimeoutIgnoredOnceStarted();
 
 private:
@@ -423,15 +427,71 @@ void TestEngineLogic::interpolatesElapsed()
     QCOMPARE(m_logic->elapsed(), qint64(1500));
 }
 
-void TestEngineLogic::playFailureClearsTracks()
+void TestEngineLogic::systemicFailureStops()
 {
     QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
     m_logic->play();
-    m_logic->playFailed(m_sink.lastGeneration, u"gone"_s);
+    m_logic->playFailed(m_sink.lastGeneration, u"offline"_s, true);
     QCOMPARE(m_sink.calls.last(), u"fatal"_s);
+    QCOMPARE(m_sink.lastError, u"offline"_s);
+    QVERIFY(m_logic->trackIds().isEmpty());
+    QVERIFY(!m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::trackFailureSkips()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->playFailed(m_sink.lastGeneration, u"gone"_s, false);
+    QCOMPARE(m_sink.calls.last(), u"error"_s);
     QCOMPARE(m_sink.lastError, u"gone"_s);
     QVERIFY(m_logic->trackIds().isEmpty());
     QVERIFY(!m_logic->isAwaitingStart());
+    QCOMPARE(m_logic->state(), EngineState::Stopped);
+}
+
+// the play that replaced a's deferred pause failed: a must not keep playing after qmmp stops
+void TestEngineLogic::systemicFailureOnTrackChangePausesPreviousTrack()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->playFailed(m_sink.lastGeneration, u"rate limited"_s, true);
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Stopped"_s, u"state Buffering"_s, u"play spotify:track:b 0"_s,
+                                          u"fatal"_s, u"pause"_s }));
+}
+
+void TestEngineLogic::failureOnFirstPlayLeavesDeviceAlone()
+{
+    m_logic->updateState(deviceState(u"dev"_s, u"x"_s, 5000));
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_logic->playFailed(m_sink.lastGeneration, u"rate limited"_s, true);
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
+}
+
+// qmmp skips to the next track (its play cancels the pause) until it gives up and stops
+void TestEngineLogic::skippedFailuresPauseOnlyWhenQmmpGivesUp()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_logic->playFailed(m_sink.lastGeneration, u"gone"_s, false);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/c"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
+    m_logic->playFailed(m_sink.lastGeneration, u"gone"_s, false);
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls.last(), u"pause"_s);
 }
 
 void TestEngineLogic::newTrackReportsWithinStaleCommandGrace()
@@ -519,7 +579,7 @@ void TestEngineLogic::ignoresFailureAfterStop()
     const quint64 generation = m_sink.lastGeneration;
     m_logic->stop();
     m_sink.calls.clear();
-    m_logic->playFailed(generation, u"late"_s);
+    m_logic->playFailed(generation, u"late"_s, true);
     QVERIFY(m_sink.calls.isEmpty());
 }
 
@@ -534,15 +594,15 @@ void TestEngineLogic::ignoresFailureOfSupersededPlay()
     const quint64 second = m_sink.lastGeneration;
     QVERIFY(first != second);
     m_sink.calls.clear();
-    m_logic->playFailed(first, u"late"_s);
+    m_logic->playFailed(first, u"late"_s, true);
     QVERIFY(m_sink.calls.isEmpty());
     QCOMPARE(m_logic->trackIds(), QStringList { u"b"_s });
-    m_logic->playFailed(second, u"now"_s);
+    m_logic->playFailed(second, u"now"_s, true);
     QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
     QVERIFY(m_logic->trackIds().isEmpty());
 }
 
-void TestEngineLogic::failsWhenDeviceDoesNotStart()
+void TestEngineLogic::skipsWhenDeviceDoesNotStart()
 {
     QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
     m_logic->play();
@@ -552,7 +612,7 @@ void TestEngineLogic::failsWhenDeviceDoesNotStart()
     QVERIFY(m_sink.calls.isEmpty());
     m_now += 1;
     m_logic->checkStartTimeout();
-    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QCOMPARE(m_sink.calls, QStringList { u"error"_s });
     QCOMPARE(m_sink.lastError, u"Spotify: the device did not start playing"_s);
     QVERIFY(!m_logic->isAwaitingStart());
     QVERIFY(m_logic->trackIds().isEmpty());
