@@ -21,6 +21,7 @@ public:
     void apiResume() override { calls << u"resume"_s; }
     void apiSeek(qint64 positionMs) override { calls << u"seek %1"_s.arg(positionMs); }
     void apiQueue(const QString &uri) override { calls << u"queue "_s + uri; }
+    void apiNext() override { calls << u"next"_s; }
     void reportState(EngineState state) override
     {
         static const QStringList names = { u"Stopped"_s, u"Buffering"_s, u"Playing"_s, u"Paused"_s };
@@ -63,9 +64,11 @@ private slots:
     void pauseIgnoresStalePoll();
     void queuesNextAndSwitchesGaplessly();
     void startsNextWhenDeviceDidNotAdvance();
+    void fallsBackToPlayWhenQueueFailed();
     void enqueueDoesNotQueueImmediately();
     void tickQueuesOnceAtLeadTime();
     void tickDoesNotQueueWhilePaused();
+    void updateStateQueuesInsideWindow();
     void switchingBeforeLeadTimeNeverQueuesAbandonedNext();
     void finishesWhenTrackEnds();
     void stopPausesOwnTrack();
@@ -189,7 +192,25 @@ void TestEngineLogic::startsNextWhenDeviceDidNotAdvance()
     QCOMPARE(m_sink.calls, QStringList { u"queue spotify:track:b"_s });
     m_now += 500; // ...but the device never advances to it
     m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    // b is already in Spotify's queue: skip to it instead of apiPlay, which would leave
+    // the queued entry to play a second time after it
     QCOMPARE(m_sink.calls.mid(1), (QStringList { u"finished"_s, u"state Stopped"_s,
+                                          u"state Buffering"_s, u"next"_s }));
+    QVERIFY(m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::fallsBackToPlayWhenQueueFailed()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->tick();
+    QCOMPARE(m_sink.calls, QStringList { u"queue spotify:track:b"_s });
+    m_logic->queueFailed(); // the queue POST failed, so b never reached the device
+    m_sink.calls.clear();
+    m_now += 500;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s,
                                           u"state Buffering"_s, u"play spotify:track:b 0"_s }));
     QVERIFY(m_logic->isAwaitingStart());
 }
@@ -219,11 +240,20 @@ void TestEngineLogic::tickDoesNotQueueWhilePaused()
 {
     startPlaying(u"a"_s);
     QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500: inside the window while still playing
     m_logic->pause();
     m_sink.calls.clear();
-    m_now += 199000;
     m_logic->tick();
     QVERIFY(m_sink.calls.isEmpty());
+}
+
+void TestEngineLogic::updateStateQueuesInsideWindow()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 198500));
+    QCOMPARE(m_sink.calls, QStringList { u"queue spotify:track:b"_s });
 }
 
 void TestEngineLogic::switchingBeforeLeadTimeNeverQueuesAbandonedNext()
@@ -233,6 +263,8 @@ void TestEngineLogic::switchingBeforeLeadTimeNeverQueuesAbandonedNext()
     m_now += 195000; // inside the old ~7 s announce window but before the 1.5 s lead time
     m_logic->tick();
     m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/c"_s));
+    m_logic->play();
     QVERIFY(!m_sink.calls.contains(u"queue spotify:track:b"_s));
 }
 

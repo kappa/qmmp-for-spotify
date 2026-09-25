@@ -26,7 +26,7 @@ Agreed direction (2026-09-24):
 ### Play Spotify-sourced playlists as Spotify contexts (wanted, needs a design round)
 
 Today qmmp owns the order and feeds the device one track at a time (plus one queued
-track ~7 s before the end). Other Spotify clients instead play a *context* ("Liked Songs
+track 1.5 s before the end). Other Spotify clients instead play a *context* ("Liked Songs
 from track 37"): Spotify owns order, shuffle, repeat and Up Next, and playback continues
 after any client closes. Alex prefers the context model: he does not edit playlists in
 qmmp.

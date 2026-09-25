@@ -170,6 +170,11 @@ void SpotifyApi::queue(const QString &deviceId, const QString &uri, Callback cal
     request("POST", endpoint(u"/me/player/queue"_s, query), QByteArray(), callback);
 }
 
+void SpotifyApi::next(const QString &deviceId, Callback callback)
+{
+    request("POST", endpoint(u"/me/player/next"_s, deviceQuery(deviceId)), QByteArray(), callback);
+}
+
 void SpotifyApi::myPlaylists(ListCallback<SpotifyPlaylist> callback)
 {
     collect<SpotifyPlaylist>(endpoint(u"/me/playlists"_s, pageQuery()), SpotifyJson::parsePlaylists, {}, callback);

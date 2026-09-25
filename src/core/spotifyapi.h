@@ -38,6 +38,7 @@ public:
     void resume(const QString &deviceId, Callback callback);
     void seek(const QString &deviceId, qint64 positionMs, Callback callback);
     void queue(const QString &deviceId, const QString &uri, Callback callback);
+    void next(const QString &deviceId, Callback callback);
     void myPlaylists(ListCallback<SpotifyPlaylist> callback);
     void playlistTracks(const QString &playlistId, ListCallback<SpotifyTrack> callback);
     void likedTracks(ListCallback<SpotifyTrack> callback);

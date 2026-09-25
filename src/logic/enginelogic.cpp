@@ -165,6 +165,13 @@ void EngineLogic::playFailed(quint64 generation, const QString &message)
     fail(message);
 }
 
+// the queue call failed (or its result never reached us): the entry never reached the
+// device, so the next-track-ends fallback must send apiPlay instead of skipping to it
+void EngineLogic::queueFailed()
+{
+    m_nextQueued = false;
+}
+
 void EngineLogic::checkStartTimeout()
 {
     if(m_awaiting && m_activeGeneration != 0 && m_clock() - m_playSentAt >= kStartTimeoutMs)
@@ -229,6 +236,16 @@ void EngineLogic::startOnDevice(qint64 positionMs)
     m_sink->apiPlay(trackUri(m_current.id), positionMs, m_activeGeneration);
 }
 
+// the next track is already sitting in Spotify's queue: skip to it instead of apiPlay,
+// which would start a second copy and leave the queued entry to play again after it
+void EngineLogic::skipOnDevice()
+{
+    m_awaiting = true;
+    m_activeGeneration = ++m_generation;
+    m_playSentAt = m_clock();
+    m_sink->apiNext();
+}
+
 // every play failure is fatal: qmmp stops instead of trying each following track
 void EngineLogic::fail(const QString &message)
 {
@@ -264,7 +281,10 @@ void EngineLogic::finish()
 {
     if(!m_next.isEmpty())
     {
-        switchToNext(true);
+        const bool queued = m_nextQueued;
+        switchToNext(!queued);
+        if(queued)
+            skipOnDevice();
         return;
     }
     m_current = Entry();

@@ -17,6 +17,7 @@ public:
     virtual void apiResume() = 0;
     virtual void apiSeek(qint64 positionMs) = 0;
     virtual void apiQueue(const QString &uri) = 0;
+    virtual void apiNext() = 0;
     virtual void reportState(EngineState state) = 0;
     virtual void reportTrack(const QString &path, const SpotifyTrack &track) = 0;
     virtual void reportFinished() = 0;
@@ -41,6 +42,7 @@ public:
     void flushPendingPause();
     void updateState(const PlayerState &state);
     void playFailed(quint64 generation, const QString &message);
+    void queueFailed();
     void checkStartTimeout();
     void tick();
 
@@ -48,6 +50,7 @@ public:
     qint64 elapsed() const;
     QStringList trackIds() const;
     bool isAwaitingStart() const { return m_awaiting; }
+    quint64 activeGeneration() const { return m_activeGeneration; }
 
 private:
     struct Entry
@@ -65,6 +68,7 @@ private:
     void fail(const QString &message);
     void switchToNext(bool startNow);
     void finish();
+    void skipOnDevice();
     void maybeQueueNext();
     bool nearEnd() const;
     bool inCommandGrace() const;

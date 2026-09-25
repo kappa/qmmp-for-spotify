@@ -102,7 +102,32 @@ void SpotifyEngine::apiSeek(qint64 positionMs)
 
 void SpotifyEngine::apiQueue(const QString &uri)
 {
-    m_client->api()->queue(m_client->deviceId(), uri, notifyOnFailure());
+    QPointer<SpotifyEngine> self(this);
+    SpotifyClient *client = m_client;
+    m_client->api()->queue(m_client->deviceId(), uri, [self, client](const ApiResult &result) {
+        if(!result.ok)
+        {
+            client->notify(result.message);
+            if(self)
+                self->m_logic.queueFailed();
+        }
+        client->poller()->pollSoon();
+    });
+}
+
+void SpotifyEngine::apiNext()
+{
+    QPointer<SpotifyEngine> self(this);
+    SpotifyClient *client = m_client;
+    const quint64 generation = m_logic.activeGeneration();
+    m_client->api()->next(m_client->deviceId(), [self, client, generation](const ApiResult &result) {
+        client->poller()->pollSoon();
+        if(self && !result.ok)
+        {
+            self->m_logic.playFailed(generation, result.message);
+            self->publishTracks();
+        }
+    });
 }
 
 SpotifyApi::Callback SpotifyEngine::notifyOnFailure() const

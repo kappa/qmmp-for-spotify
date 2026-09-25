@@ -28,6 +28,7 @@ private:
     void apiResume() override;
     void apiSeek(qint64 positionMs) override;
     void apiQueue(const QString &uri) override;
+    void apiNext() override;
     void reportState(EngineState state) override;
     void reportTrack(const QString &path, const SpotifyTrack &track) override;
     void reportFinished() override;

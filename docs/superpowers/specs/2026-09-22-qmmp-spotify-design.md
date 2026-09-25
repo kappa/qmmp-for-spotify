@@ -185,5 +185,12 @@ volume control (possible later via `PUT /me/player/volume`).
 - `stop()` defers its pause to the next event-loop turn; a `play()` in the same call stack (Next, Previous, double-click, restart) cancels it, so no pause/play race reaches the device. Replaying the track that was just stopped sends play from 0 instead of adopting the device's playback. Stop pauses whenever qmmp believes it is playing its track on the device; a paused device is left alone.
 - Loaded Spotify playlists are named "Spotify: <playlist name>"; only such playlists are reused and refilled.
 - A 429 with `Retry-After` above 10 s fails at once with "Spotify: rate limited, try again in N min" instead of waiting.
-- Known limitation kept: Spotify queue items cannot be removed, so skipping in the last ~7 s of a track can make the device play the next track twice.
+- Known limitation kept: Spotify queue items cannot be removed. Queuing late and skipping
+  to an already-queued track instead of replaying it (see below) together shrink the
+  window in which this could cause a duplicate to a tight race around the queue call
+  landing, not eliminate it.
 - The next track is queued 1.5 s before the end instead of when qmmp announces it (7 s).
+- If the device reaches the end of a track with the next one already queued but has not
+  advanced to it on its own, qmmp sends Spotify's skip-to-next instead of `play`, so the
+  already-queued track is consumed instead of replayed; only if the queue call itself
+  failed does qmmp fall back to `play`.
