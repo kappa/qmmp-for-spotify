@@ -54,10 +54,7 @@ void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, 
     if(!model)
         return;
     if(!result.ok)
-    {
-        SpotifyClient::instance()->notify(result.message);
-        return;
-    }
+        SpotifyClient::instance()->notify(expansionFailureMessage(rawPath, result.status, result.message));
     // track may have been deleted (or its address reused) while the request was in flight;
     // only trust it once we find it still live in the model, at the path we captured before asking.
     PlayListTrack *live = nullptr;
@@ -72,6 +69,12 @@ void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, 
     }
     if(!live)
         return;
+    // a link that could not be expanded cannot be played either
+    if(!result.ok)
+    {
+        model->removeTrack(live);
+        return;
+    }
     const int index = model->indexOf(live);
     if(index < 0)
         return;

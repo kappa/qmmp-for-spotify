@@ -33,6 +33,7 @@ private slots:
     void selectsEarlierOccurrence();
     void appendsMissingTrack();
     void expansion();
+    void expansionFailureMessage();
     void triggerIgnoresSameTrackStillPlaying();
     void triggerFiresOnTrackChange();
     void triggerFiresOnResume();
@@ -104,6 +105,17 @@ void TestFollowerLogic::expansion()
     QVERIFY(needsExpansion(u"spotify://track/abc"_s, QString()));
     QVERIFY(!needsExpansion(u"spotify://track/abc"_s, u"Song"_s));
     QVERIFY(!needsExpansion(u"/music/a.mp3"_s, QString()));
+}
+
+void TestFollowerLogic::expansionFailureMessage()
+{
+    const QString otherUsers = u"Spotify: this app can't read other users' playlists"_s;
+    QCOMPARE(::expansionFailureMessage(u"https://open.spotify.com/playlist/abc"_s, 404, u"Spotify: Resource not found"_s), otherUsers);
+    QCOMPARE(::expansionFailureMessage(u"spotify://playlist/abc"_s, 403, u"Spotify: Forbidden"_s), otherUsers);
+    QCOMPARE(::expansionFailureMessage(u"spotify://playlist/abc"_s, 0, u"Spotify: network error: no response"_s),
+             u"Spotify: network error: no response"_s);
+    QCOMPARE(::expansionFailureMessage(u"spotify://album/abc"_s, 404, u"Spotify: Resource not found"_s),
+             u"Spotify: Resource not found"_s);
 }
 
 void TestFollowerLogic::triggerIgnoresSameTrackStillPlaying()

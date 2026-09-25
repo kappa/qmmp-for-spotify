@@ -51,15 +51,6 @@ on them — skip to the next track, as Spotify does.
   previous track keeps playing on the device and qmmp's Stop cannot pause it (the pending
   pause was cancelled). Pause the device on that path.
 
-### Adding another user's playlist link leaves the raw link behind
-
-Add URL with a playlist owned by someone else: Spotify answers "Resource not found"
-(Development Mode cannot read other users' playlists), the notice shows Spotify's raw text,
-and the unexpanded link stays in the qmmp playlist (`src/general/linkexpander.cpp:56-59`
-keeps the raw entry on failure); it cannot be played. Seen in manual testing 2026-09-24.
-Fix: remove the raw entry when expansion fails; for playlist links answered with 403/404
-say "Spotify doesn't let this app read other users' playlists".
-
 ### Closing the device leaves qmmp "playing"
 
 Manual test 2026-09-24: with a Spotify track playing on the web player, closing the web
