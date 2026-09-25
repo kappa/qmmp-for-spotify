@@ -21,13 +21,6 @@ Agreed direction (2026-09-24):
 - Caveats: qmmp has one volume, so it carries over to local files; some devices reject
   remote volume (`VOLUME_CONTROL_DISALLOW`, often iPhones) → one notice, slider snaps back.
 
-### Crash on quit
-
-qmmp segfaults on every quit with the plugin loaded: `~SpotifyGeneral` calls
-`UiHelper::instance()->removeAction(...)` after UiHelper is destroyed
-(`src/general/spotifygeneral.cpp:33`, confirmed in gdb). Fix: drop the call — UiHelper
-already removes the action when it is destroyed (`uihelper.cpp:133`).
-
 ### Stale queue entry replays a track
 
 Spotify queue items cannot be removed through the Web API. qmmp announces the next track
