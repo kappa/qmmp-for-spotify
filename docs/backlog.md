@@ -47,10 +47,18 @@ Adding a malformed Spotify link (e.g. a mangled track ID) shows Spotify's raw er
 "bad base62 URL". Replace it with a plain message along the lines of
 "Spotify: cannot add this link" (Alex).
 
-### Follow playback to another device (wanted, 2026-09-26)
+### No device selection: play on the current device (wanted, 2026-09-26)
 
-Today, when playback moves from the selected device to another one (e.g. transferred to
-the phone), qmmp pauses with a notice ("closed device" ruling, 5b6f17d). Alex prefers
-following, like Spotify's own apps: make the new device the selected one and keep going —
-qmmp shows what it plays and further commands act on it. A device that disappears with
-nothing playing elsewhere still pauses. Fits context playback.
+Replaces "follow playback to another device". Today qmmp targets one device chosen in the
+Device dialog and pauses when playback moves elsewhere ("closed device" ruling, 5b6f17d).
+Alex wants no device selection:
+- Something is active: qmmp plays on the active device (Web API calls without
+  `device_id`). When playback moves to another device, qmmp simply follows it; the
+  "moved elsewhere → pause" logic goes away.
+- Nothing is active: pick a device silently, no dialog:
+  1. the last device qmmp played on, if it is in `GET /me/player/devices`;
+  2. otherwise the first device that is not `is_restricted`;
+  3. no devices: notice "Spotify: no device available, open Spotify somewhere".
+- The Device dialog goes away, or stays only as an optional menu item to pick a device by
+  hand (decide at design time).
+- Fits context playback.
