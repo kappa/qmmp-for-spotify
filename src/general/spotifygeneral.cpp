@@ -12,6 +12,7 @@
 #include "spotifyclient.h"
 #include "spotifygeneral.h"
 #include "trackbuilder.h"
+#include "windowwatcher.h"
 
 SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
 {
@@ -26,6 +27,7 @@ SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
 
     new Follower(this);
     new LinkExpander(this);
+    new WindowWatcher(this);
 }
 
 SpotifyGeneral::~SpotifyGeneral()

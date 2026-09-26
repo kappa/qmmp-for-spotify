@@ -44,6 +44,7 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
         if(endsSuppression(state, deviceId(), m_suppressedTrack))
             m_suppressedTrack.clear();
     });
+    connect(m_poller, &SpotifyPoller::connectionLost, this, [this] { notify(u"Spotify: lost connection, polling stopped"_s); });
     connect(m_auth, &SpotifyAuth::loggedIn, this, [this] {
         m_poller->setEnabled(true);
         notify(u"Logged in to Spotify"_s);
@@ -100,7 +101,7 @@ void SpotifyClient::setEngineTracks(const QStringList &ids, bool awaiting)
 {
     m_engineTrackIds = ids;
     m_engineAwaiting = awaiting;
-    m_poller->setEngineActive(!ids.isEmpty());
+    m_poller->setEngineActive(!ids.isEmpty(), awaiting);
 }
 
 bool SpotifyClient::takeStartupAttach()

@@ -7,10 +7,12 @@
 #include "devicedialog.h"
 #include "spotifyapi.h"
 #include "spotifyclient.h"
+#include "spotifypoller.h"
 
 DeviceDialog::DeviceDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Spotify Device"));
+    SpotifyClient::instance()->poller()->pollOnInteraction();
     resize(420, 320);
     m_list = new QListWidget(this);
     m_status = new QLabel(this);

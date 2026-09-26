@@ -7,10 +7,12 @@
 #include "playlistfilter.h"
 #include "spotifyapi.h"
 #include "spotifyclient.h"
+#include "spotifypoller.h"
 
 PlayListDialog::PlayListDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Load Spotify Playlist"));
+    SpotifyClient::instance()->poller()->pollOnInteraction();
     resize(520, 600);
     m_list = new QListWidget(this);
     m_status = new QLabel(tr("Loading…"), this);

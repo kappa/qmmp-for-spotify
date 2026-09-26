@@ -82,11 +82,25 @@ plugin install location). The distro's older qmmp is not a target.
   - Handles 401 (refresh, retry once), 429 (`Retry-After`, see the rate-limit gate below),
     maps other errors to a message string (Spotify's own message where present).
   - Logs every request to `api.log` next to the token file (see below).
-- `SpotifyPoller` — polls `GET /me/player`: ~2 s while the selected device is playing
-  or qmmp's engine is active, ~10 s otherwise. Emits `stateChanged(PlayerState)`.
-  Network errors back off exponentially up to 30 s. Pauses while logged out. While
-  requests are rate-limit blocked, the next poll is scheduled 1 s after the block ends
-  (`pollSoon()` does not shorten that).
+- `SpotifyPoller` — polls `GET /me/player` (the only periodic request), emits
+  `stateChanged(PlayerState)`. The schedule (`pollpolicy`) depends on whether a qmmp main
+  window is visible (shown and not minimized; reported by the general plugin, qmmp without
+  it counts as visible):
+  - visible, and the engine is active or the selected device is playing: every 2 s;
+  - otherwise (visible idle, or hidden): every 60 s; while the engine waits for the device
+    to start a track (its start timeout needs polls): every 2 s;
+  - hidden with the selected device playing: an extra poll 5 s before the predicted track
+    end (poll time + duration − progress, from every successful poll), so the engine's
+    queue step 1.5 s before the end acts on fresh state;
+  - a successful poll with no playback (204) stops polling unless the engine is active;
+  - failed polls retry after 2, 4, … 256 s; the 9th failure in a row stops polling with
+    one notice "Spotify: lost connection, polling stopped";
+  - stopped polling resumes on interaction: a main window shown, qmmp focused or a Spotify
+    dialog opened (at most one poll per 5 s: dropped if a poll was sent less than 5 s ago),
+    or a playback command (`pollSoon()`, not throttled), with a fresh retry sequence.
+  Pauses while logged out. While requests are rate-limit blocked, the next poll is
+  scheduled 1 s after the block ends (`pollSoon()` does not shorten that); blocked polls
+  are not failures.
 - `SpotifyLink` — parses `spotify://{track,album,playlist}/<id>`,
   `spotify:{track,album,playlist}:<id>` and `https://open.spotify.com/[intl-xx/]{track,album,playlist}/<id>[?…]`.
   Canonical playlist path for a track: `spotify://track/<id>`.
@@ -148,7 +162,7 @@ progress, timestamp.
 | 429 | Block all Web API requests until `Retry-After` (missing → 30 s, at most 24 h); during a block of ≤ 10 s requests wait for its end, during a longer one they fail with one notice per block; poller waits for the block. |
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
-| Network down | Poller backs off to 30 s; no error spam. |
+| Network down | Poller retries after 2 … 256 s, then stops with one notice until the next interaction; no error spam. |
 
 ## Testing
 

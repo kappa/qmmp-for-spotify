@@ -10,10 +10,12 @@
 #include "spotifyapi.h"
 #include "spotifyauth.h"
 #include "spotifyclient.h"
+#include "spotifypoller.h"
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Spotify Plugin Settings"));
+    SpotifyClient::instance()->poller()->pollOnInteraction();
     SpotifyClient *client = SpotifyClient::instance();
 
     m_clientId = new QLineEdit(client->clientId(), this);
