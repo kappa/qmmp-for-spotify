@@ -29,3 +29,11 @@ Direction (2026-09-24):
 - End of playlist (decided 2026-09-24): in context mode qmmp follows the server (Spotify's
   Autoplay may continue, qmmp follows it); for custom or edited playlists (track-by-track
   mode) qmmp pauses the device when its playlist ends.
+
+### Mark unavailable tracks in the playlist (wanted, 2026-09-26)
+
+Spotify returns `is_playable: false` (with `restrictions.reason`, e.g. `market`) for tracks
+that can't be played in Alex's country: 14 in "My India" (e.g. "Jeva Nadhi"), 30 in Liked
+Songs. The plugin ignores the flag and finds out only when playing fails.
+- Prefix the title of such tracks with `(unavailable) `, e.g. "(unavailable) Jeva Nadhi".
+- Possibly skip them without sending a play request (to decide at design time).
