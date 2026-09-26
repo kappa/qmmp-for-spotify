@@ -40,3 +40,9 @@ Songs. The plugin ignores the flag and finds out only when playing fails.
 - No message box when an unavailable track is skipped: today Spotify's 403 text
   ("restriction violated") pops up even though qmmp skips to the next track
   (Alex, 2026-09-26: "the message box is not needed").
+
+### Clear message for a broken link (wanted, 2026-09-26)
+
+Adding a malformed Spotify link (e.g. a mangled track ID) shows Spotify's raw error
+"bad base62 URL". Replace it with a plain message along the lines of
+"Spotify: cannot add this link" (Alex).
