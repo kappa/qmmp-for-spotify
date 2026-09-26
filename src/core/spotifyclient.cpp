@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSettings>
+#include "apipolicy.h"
 #include "followerlogic.h"
 #include "spotifyapi.h"
 #include "spotifyauth.h"
@@ -52,6 +53,7 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
         notify(reason);
     });
     connect(m_auth, &SpotifyAuth::loginFailed, this, [this](const QString &message) { notify(message); });
+    connect(m_api, &SpotifyApi::rateLimited, this, [this](const QString &message) { notify(message); });
 }
 
 QString SpotifyClient::clientId() const
@@ -109,6 +111,14 @@ bool SpotifyClient::takeStartupAttach()
 void SpotifyClient::notify(const QString &message)
 {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // every request fails while a block lasts, each with a different "try again in N"
+    if(isRateLimitMessage(message))
+    {
+        const bool shown = now < m_rateLimitNoticeUntil;
+        m_rateLimitNoticeUntil = qMax(m_rateLimitNoticeUntil, m_api->blockedUntil());
+        if(shown)
+            return;
+    }
     if(now - m_noticeTimes.value(message, -kNoticeRepeatMs) < kNoticeRepeatMs)
         return;
     m_noticeTimes.insert(message, now);

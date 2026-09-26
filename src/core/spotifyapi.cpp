@@ -1,11 +1,18 @@
+#include <QDateTime>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QSaveFile>
 #include <QTimer>
+#include "apilog.h"
 #include "apipolicy.h"
 #include "spotifyapi.h"
+#include "spotifyapilog.h"
 #include "spotifyauth.h"
 #include "spotifyjson.h"
 
@@ -14,6 +21,18 @@ using namespace Qt::StringLiterals;
 namespace {
 
 const int kMaxPages = 200;
+// precise timers never fire early; the margin absorbs millisecond rounding of the clock
+const int kRetryMarginMs = 50;
+
+qint64 now()
+{
+    return QDateTime::currentMSecsSinceEpoch();
+}
+
+QString pathQuery(const QUrl &url)
+{
+    return url.toString(QUrl::RemoveScheme | QUrl::RemoveAuthority);
+}
 
 QUrl endpoint(const QString &path, const QUrlQuery &query = QUrlQuery())
 {
@@ -40,11 +59,54 @@ QUrlQuery pageQuery()
 }
 
 SpotifyApi::SpotifyApi(SpotifyAuth *auth, QObject *parent)
-    : QObject(parent), m_auth(auth), m_network(new QNetworkAccessManager(this))
-{}
+    : QObject(parent), m_auth(auth), m_network(new QNetworkAccessManager(this)), m_dataDir(auth->dataDir())
+{
+    // a past, missing or unreadable block leaves requests open
+    QFile file(m_dataDir + u"/ratelimit"_s);
+    if(file.open(QIODevice::ReadOnly))
+        m_blockedUntil = file.readAll().trimmed().toLongLong();
+}
+
+bool SpotifyApi::isBlocked() const
+{
+    return ::isBlocked(m_blockedUntil, now());
+}
+
+// the callback runs on the next event-loop turn: callers may be in the middle of a state change
+bool SpotifyApi::refuseWhileBlocked(const QByteArray &verb, const QUrl &url, const Callback &callback)
+{
+    if(!isBlocked())
+        return false;
+    logApiRequest(m_dataDir, verb, pathQuery(url), 429, 0, u"blocked"_s);
+    ApiResult result;
+    result.status = 429;
+    result.rateLimited = true;
+    result.message = rateLimitMessage(m_blockedUntil - now());
+    QTimer::singleShot(0, this, [callback, result] { callback(result); });
+    return true;
+}
+
+void SpotifyApi::blockFor(int retryAfterSeconds)
+{
+    const qint64 blockedUntil = extendBlock(m_blockedUntil, now(), retryAfterSeconds);
+    if(blockedUntil == m_blockedUntil)
+        return;
+    m_blockedUntil = blockedUntil;
+    QDir().mkpath(m_dataDir);
+    QSaveFile file(m_dataDir + u"/ratelimit"_s);
+    if(!file.open(QIODevice::WriteOnly))
+    {
+        qWarning("Spotify: cannot write %s", qPrintable(file.fileName()));
+        return;
+    }
+    file.write(QByteArray::number(m_blockedUntil) + '\n');
+    file.commit();
+}
 
 void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried)
 {
+    if(refuseWhileBlocked(verb, url, callback))
+        return;
     m_auth->withToken([=](bool ok) {
         if(!ok)
         {
@@ -53,37 +115,56 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
             callback(result);
             return;
         }
+        // a 429 may have arrived while the token was being refreshed
+        if(refuseWhileBlocked(verb, url, callback))
+            return;
         QNetworkRequest networkRequest(url);
         networkRequest.setRawHeader("Authorization", "Bearer " + m_auth->accessToken().toUtf8());
         networkRequest.setHeader(QNetworkRequest::ContentLengthHeader, body.size());
         if(!body.isEmpty())
             networkRequest.setHeader(QNetworkRequest::ContentTypeHeader, u"application/json"_s);
         networkRequest.setTransferTimeout(15000);
+        QElapsedTimer clock;
+        clock.start();
         QNetworkReply *reply = m_network->sendCustomRequest(networkRequest, verb, body);
         connect(reply, &QNetworkReply::finished, this, [=] {
             reply->deleteLater();
             const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             const QByteArray data = reply->readAll();
             const QString networkError = status == 0 ? reply->errorString() : QString();
-            const ApiDecision decision = classifyReply(status, networkError, reply->rawHeader("Retry-After"), data, retried);
+            const QByteArray retryAfter = reply->rawHeader("Retry-After");
+            logApiRequest(m_dataDir, verb, pathQuery(url), status, clock.elapsed(),
+                          apiLogNote(status, retryAfter, retried, networkError));
+            ApiDecision decision = classifyReply(status, networkError, retryAfter, data, retried);
+            if(decision.rateLimited)
+            {
+                blockFor(parseRetryAfterSeconds(retryAfter));
+                // an earlier 429 may have set a longer block than this one
+                decision = rateLimitDecision(m_blockedUntil - now(), retried);
+                if(decision.action == ApiDecision::Fail)
+                    emit rateLimited(decision.message);
+            }
             switch(decision.action)
             {
             case ApiDecision::Success:
-                callback(ApiResult { true, status, QString(), false, data, QString() });
+                callback(ApiResult { true, status, QString(), false, data, QString(), false });
                 break;
             case ApiDecision::RefreshAndRetry:
                 m_auth->refresh([=](bool refreshed) {
                     if(refreshed)
                         request(verb, url, body, callback, true);
                     else
-                        callback(ApiResult { false, status, u"Spotify session expired, please log in again"_s, false, data, QString() });
+                        callback(ApiResult { false, status, u"Spotify session expired, please log in again"_s, false, data,
+                                             QString(), false });
                 });
                 break;
             case ApiDecision::RetryAfter:
-                QTimer::singleShot(decision.retryAfterMs, this, [=] { request(verb, url, body, callback, true); });
+                QTimer::singleShot(decision.retryAfterMs + kRetryMarginMs, Qt::PreciseTimer, this,
+                                   [=] { request(verb, url, body, callback, true); });
                 break;
             case ApiDecision::Fail:
-                callback(ApiResult { false, status, decision.message, decision.deviceProblem, data, decision.reason });
+                callback(ApiResult { false, status, decision.message, decision.deviceProblem, data, decision.reason,
+                                     decision.rateLimited });
                 break;
             }
         });
@@ -225,4 +306,9 @@ void SpotifyApi::track(const QString &trackId, std::function<void(const ApiResul
     request("GET", endpoint(u"/tracks/"_s + trackId), QByteArray(), [callback](const ApiResult &result) {
         callback(result, result.ok ? SpotifyJson::parseSingleTrack(result.body) : SpotifyTrack());
     });
+}
+
+void SpotifyApi::get(const QString &pathQuery, Callback callback)
+{
+    request("GET", QUrl(u"https://api.spotify.com/v1"_s + pathQuery), QByteArray(), callback);
 }

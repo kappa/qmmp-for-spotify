@@ -6,13 +6,56 @@
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QOAuth2AuthorizationCodeFlow>
 #include <QOAuthHttpServerReplyHandler>
 #include <QOAuthOobReplyHandler>
 #include <QSaveFile>
+#include "spotifyapilog.h"
 #include "spotifyauth.h"
 
 using namespace Qt::StringLiterals;
+
+namespace {
+
+const char *const kStartedProperty = "spotifyStartedMs";
+
+// stamps each reply with its start, so token requests can be logged with their duration
+class TimedNetworkAccessManager : public QNetworkAccessManager
+{
+public:
+    using QNetworkAccessManager::QNetworkAccessManager;
+
+protected:
+    QNetworkReply *createRequest(Operation op, const QNetworkRequest &request, QIODevice *data) override
+    {
+        QNetworkReply *reply = QNetworkAccessManager::createRequest(op, request, data);
+        reply->setProperty(kStartedProperty, QDateTime::currentMSecsSinceEpoch());
+        return reply;
+    }
+};
+
+QByteArray verbOf(const QNetworkReply *reply)
+{
+    switch(reply->operation())
+    {
+    case QNetworkAccessManager::GetOperation:
+        return "GET";
+    case QNetworkAccessManager::PostOperation:
+        return "POST";
+    case QNetworkAccessManager::PutOperation:
+        return "PUT";
+    case QNetworkAccessManager::DeleteOperation:
+        return "DELETE";
+    case QNetworkAccessManager::HeadOperation:
+        return "HEAD";
+    default:
+        return reply->request().attribute(QNetworkRequest::CustomVerbAttribute).toByteArray();
+    }
+}
+
+}
 
 SpotifyAuth::SpotifyAuth(const QString &tokenFile, QObject *parent) : QObject(parent), m_tokenFile(tokenFile)
 {
@@ -26,6 +69,15 @@ SpotifyAuth::SpotifyAuth(const QString &tokenFile, QObject *parent) : QObject(pa
     m_flow->setAutoRefresh(false);
     m_flow->setReplyHandler(new QOAuthOobReplyHandler(this));
     m_flow->setRefreshToken(loadRefreshToken());
+
+    auto *network = new TimedNetworkAccessManager(this);
+    m_flow->setNetworkAccessManager(network);
+    connect(network, &QNetworkAccessManager::finished, this, [this](QNetworkReply *reply) {
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const qint64 started = reply->property(kStartedProperty).toLongLong();
+        logApiRequest(dataDir(), verbOf(reply), reply->url().toString(QUrl::RemoveScheme | QUrl::RemoveAuthority),
+                      status, QDateTime::currentMSecsSinceEpoch() - started, status == 0 ? reply->errorString() : QString());
+    });
 
     connect(m_flow, &QAbstractOAuth::authorizeWithBrowser, this, [](const QUrl &url) { QDesktopServices::openUrl(url); });
     connect(m_flow, &QAbstractOAuth2::refreshTokenChanged, this, [this](const QString &token) {
@@ -72,6 +124,11 @@ bool SpotifyAuth::accessTokenValid() const
 QString SpotifyAuth::accessToken() const
 {
     return m_flow->token();
+}
+
+QString SpotifyAuth::dataDir() const
+{
+    return QFileInfo(m_tokenFile).absolutePath();
 }
 
 QString SpotifyAuth::redirectUri(quint16 port)
@@ -184,7 +241,7 @@ void SpotifyAuth::clearCredentials()
 
 void SpotifyAuth::saveRefreshToken(const QString &token)
 {
-    QDir().mkpath(QFileInfo(m_tokenFile).absolutePath());
+    QDir().mkpath(dataDir());
     QSaveFile file(m_tokenFile);
     if(!file.open(QIODevice::WriteOnly))
     {

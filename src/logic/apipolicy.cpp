@@ -1,5 +1,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <limits>
 #include "apipolicy.h"
 
 using namespace Qt::StringLiterals;
@@ -7,7 +8,51 @@ using namespace Qt::StringLiterals;
 namespace {
 
 const int kMaxRetryAfterSeconds = 10;
+const int kDefaultRetryAfterSeconds = 30;
 
+}
+
+int parseRetryAfterSeconds(const QByteArray &header)
+{
+    bool ok = false;
+    const int seconds = header.trimmed().toInt(&ok);
+    return ok && seconds >= 0 ? seconds : kDefaultRetryAfterSeconds;
+}
+
+qint64 extendBlock(qint64 blockedUntilMs, qint64 nowMs, int retryAfterSeconds)
+{
+    return qMax(blockedUntilMs, nowMs + qint64(retryAfterSeconds) * 1000);
+}
+
+bool isBlocked(qint64 blockedUntilMs, qint64 nowMs)
+{
+    return nowMs < blockedUntilMs;
+}
+
+QString rateLimitMessage(qint64 remainingMs)
+{
+    const qint64 seconds = (qMax(remainingMs, qint64(0)) + 999) / 1000;
+    if(seconds < 60)
+        return u"Spotify: rate limited, try again in %1 s"_s.arg(seconds);
+    return u"Spotify: rate limited, try again in %1 min"_s.arg((seconds + 59) / 60);
+}
+
+bool isRateLimitMessage(const QString &message)
+{
+    return message.startsWith("Spotify: rate limited, "_L1);
+}
+
+ApiDecision rateLimitDecision(qint64 waitMs, bool retried)
+{
+    ApiDecision decision;
+    decision.rateLimited = true;
+    decision.retryAfterMs = int(qMin(waitMs, qint64(std::numeric_limits<int>::max())));
+    // a long wait would leave a user command hanging silently
+    if(!retried && waitMs <= kMaxRetryAfterSeconds * 1000)
+        decision.action = ApiDecision::RetryAfter;
+    else
+        decision.message = rateLimitMessage(waitMs);
+    return decision;
 }
 
 ApiDecision classifyReply(int httpStatus, const QString &networkError, const QByteArray &retryAfter,
@@ -29,20 +74,8 @@ ApiDecision classifyReply(int httpStatus, const QString &networkError, const QBy
         decision.action = ApiDecision::RefreshAndRetry;
         return decision;
     }
-    if(httpStatus == 429 && !retried)
-    {
-        bool ok = false;
-        const int seconds = retryAfter.trimmed().toInt(&ok);
-        // a long wait would leave a user command hanging silently
-        if(ok && seconds > kMaxRetryAfterSeconds)
-        {
-            decision.message = u"Spotify: rate limited, try again in %1 min"_s.arg((seconds + 59) / 60);
-            return decision;
-        }
-        decision.action = ApiDecision::RetryAfter;
-        decision.retryAfterMs = (ok && seconds >= 0 ? seconds : 5) * 1000;
-        return decision;
-    }
+    if(httpStatus == 429)
+        return rateLimitDecision(qint64(parseRetryAfterSeconds(retryAfter)) * 1000, retried);
 
     const QJsonObject error = QJsonDocument::fromJson(body).object().value("error"_L1).toObject();
     const QString message = error.value("message"_L1).toString();
@@ -58,8 +91,6 @@ ApiDecision classifyReply(int httpStatus, const QString &networkError, const QBy
     }
     else if(httpStatus == 401)
         decision.message = u"Spotify: authorization failed, please log in again"_s;
-    else if(httpStatus == 429)
-        decision.message = u"Spotify: rate limit exceeded, try again later"_s;
     else if(!message.isEmpty())
         decision.message = u"Spotify: "_s + message;
     else
@@ -79,3 +110,4 @@ bool isSystemicPlayFailure(int httpStatus, bool deviceProblem, const QString &re
     return httpStatus == 0 || httpStatus == 401 || httpStatus == 429 || httpStatus >= 500 || deviceProblem
            || reason == "PREMIUM_REQUIRED"_L1;
 }
+

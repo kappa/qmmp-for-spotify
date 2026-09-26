@@ -11,6 +11,11 @@ private slots:
     void unauthorizedRefreshesOnce();
     void rateLimitHonoursRetryAfter();
     void longRateLimitFailsFast();
+    void retryAfterParsing_data();
+    void retryAfterParsing();
+    void blockExtendsNeverShortens();
+    void rateLimitMessages();
+    void rateLimitDecisionUsesWholeBlock();
     void noActiveDevice();
     void passesSpotifyMessage();
     void volumeControlDisallowed();
@@ -38,17 +43,77 @@ void TestApiPolicy::rateLimitHonoursRetryAfter()
     const ApiDecision withHeader = classifyReply(429, QString(), "3", QByteArray(), false);
     QCOMPARE(withHeader.action, ApiDecision::RetryAfter);
     QCOMPARE(withHeader.retryAfterMs, 3000);
-    QCOMPARE(classifyReply(429, QString(), QByteArray(), QByteArray(), false).retryAfterMs, 5000);
-    QCOMPARE(classifyReply(429, QString(), "3", QByteArray(), true).action, ApiDecision::Fail);
+    QVERIFY(withHeader.rateLimited);
+    const ApiDecision again = classifyReply(429, QString(), "3", QByteArray(), true);
+    QCOMPARE(again.action, ApiDecision::Fail);
+    QVERIFY(again.rateLimited);
+    QCOMPARE(again.message, u"Spotify: rate limited, try again in 3 s"_s);
 }
 
 void TestApiPolicy::longRateLimitFailsFast()
 {
     QCOMPARE(classifyReply(429, QString(), "10", QByteArray(), false).action, ApiDecision::RetryAfter);
-    const ApiDecision minute = classifyReply(429, QString(), "11", QByteArray(), false);
-    QCOMPARE(minute.action, ApiDecision::Fail);
-    QCOMPARE(minute.message, u"Spotify: rate limited, try again in 1 min"_s);
+    const ApiDecision longer = classifyReply(429, QString(), "11", QByteArray(), false);
+    QCOMPARE(longer.action, ApiDecision::Fail);
+    QCOMPARE(longer.retryAfterMs, 11000);
+    QVERIFY(longer.rateLimited);
     QCOMPARE(classifyReply(429, QString(), "121", QByteArray(), false).message, u"Spotify: rate limited, try again in 3 min"_s);
+    const ApiDecision missing = classifyReply(429, QString(), QByteArray(), QByteArray(), false);
+    QCOMPARE(missing.action, ApiDecision::Fail);
+    QCOMPARE(missing.retryAfterMs, 30000);
+}
+
+void TestApiPolicy::retryAfterParsing_data()
+{
+    QTest::addColumn<QByteArray>("header");
+    QTest::addColumn<int>("seconds");
+    QTest::newRow("seconds") << QByteArray("18540") << 18540;
+    QTest::newRow("spaces") << QByteArray(" 7 ") << 7;
+    QTest::newRow("zero") << QByteArray("0") << 0;
+    QTest::newRow("missing") << QByteArray() << 30;
+    QTest::newRow("garbage") << QByteArray("soon") << 30;
+    QTest::newRow("http date") << QByteArray("Fri, 25 Sep 2026 23:00:00 GMT") << 30;
+    QTest::newRow("negative") << QByteArray("-5") << 30;
+}
+
+void TestApiPolicy::retryAfterParsing()
+{
+    QFETCH(QByteArray, header);
+    QFETCH(int, seconds);
+    QCOMPARE(parseRetryAfterSeconds(header), seconds);
+}
+
+void TestApiPolicy::blockExtendsNeverShortens()
+{
+    const qint64 blocked = extendBlock(0, 1000000, 300);
+    QCOMPARE(blocked, 1300000);
+    QCOMPARE(extendBlock(blocked, 1001000, 5), blocked);
+    QCOMPARE(extendBlock(blocked, 1001000, 600), 1601000);
+    QVERIFY(isBlocked(blocked, 1299999));
+    QVERIFY(!isBlocked(blocked, 1300000));
+    QVERIFY(!isBlocked(0, 1000000));
+}
+
+void TestApiPolicy::rateLimitMessages()
+{
+    QCOMPARE(rateLimitMessage(1), u"Spotify: rate limited, try again in 1 s"_s);
+    QCOMPARE(rateLimitMessage(59000), u"Spotify: rate limited, try again in 59 s"_s);
+    QCOMPARE(rateLimitMessage(59001), u"Spotify: rate limited, try again in 1 min"_s);
+    QCOMPARE(rateLimitMessage(18540000), u"Spotify: rate limited, try again in 309 min"_s);
+    QVERIFY(isRateLimitMessage(rateLimitMessage(5000)));
+    QVERIFY(!isRateLimitMessage(u"Spotify: request failed (HTTP 500)"_s));
+}
+
+void TestApiPolicy::rateLimitDecisionUsesWholeBlock()
+{
+    const ApiDecision shortWait = rateLimitDecision(10000, false);
+    QCOMPARE(shortWait.action, ApiDecision::RetryAfter);
+    QCOMPARE(shortWait.retryAfterMs, 10000);
+    const ApiDecision longWait = rateLimitDecision(10001, false);
+    QCOMPARE(longWait.action, ApiDecision::Fail);
+    QVERIFY(longWait.rateLimited);
+    QCOMPARE(longWait.message, u"Spotify: rate limited, try again in 11 s"_s);
+    QCOMPARE(rateLimitDecision(2000, true).action, ApiDecision::Fail);
 }
 
 void TestApiPolicy::noActiveDevice()

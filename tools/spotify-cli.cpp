@@ -1,6 +1,4 @@
 #include <QGuiApplication>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTime>
@@ -119,22 +117,9 @@ int main(int argc, char **argv)
         else if(command == "pause"_L1)
             api.pause(arg1, finish);
         else if(command == "get"_L1)
-            auth.withToken([&](bool ok) {
-                if(!ok)
-                {
-                    out() << "no valid token\n";
-                    done(1);
-                    return;
-                }
-                QNetworkRequest request(QUrl(u"https://api.spotify.com/v1"_s + arg1));
-                request.setRawHeader("Authorization", "Bearer " + auth.accessToken().toUtf8());
-                auto *network = new QNetworkAccessManager(&app);
-                QNetworkReply *reply = network->get(request);
-                QObject::connect(reply, &QNetworkReply::finished, &app, [reply] {
-                    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-                    out() << reply->readAll() << '\n';
-                    done(status >= 200 && status < 300 ? 0 : 1);
-                });
+            api.get(arg1, [](const ApiResult &result) {
+                out() << result.body << '\n';
+                finish(result);
             });
         else if(command == "watch"_L1)
         {

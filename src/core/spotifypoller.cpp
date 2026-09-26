@@ -1,3 +1,4 @@
+#include <QDateTime>
 #include <QPointer>
 #include "pollpolicy.h"
 #include "spotifyapi.h"
@@ -36,7 +37,12 @@ void SpotifyPoller::setSelectedDevice(const QString &deviceId)
 
 void SpotifyPoller::pollSoon()
 {
-    if(m_enabled && !m_inFlight)
+    if(!m_enabled || m_inFlight)
+        return;
+    // while rate limited the next poll stays at the end of the block
+    if(m_api->isBlocked())
+        scheduleNext();
+    else
         m_timer.start(300);
 }
 
@@ -56,7 +62,7 @@ void SpotifyPoller::poll()
             self->m_last = state;
             emit self->stateChanged(state);
         }
-        else
+        else if(!result.rateLimited)
             self->m_failures++;
         self->scheduleNext();
     });
@@ -66,6 +72,14 @@ void SpotifyPoller::scheduleNext()
 {
     if(!m_enabled)
         return;
+    if(m_api->isBlocked())
+    {
+        // a coarse timer may fire minutes early on a long block
+        m_timer.setTimerType(Qt::PreciseTimer);
+        m_timer.start(rateLimitedPollDelayMs(m_api->blockedUntil(), QDateTime::currentMSecsSinceEpoch()));
+        return;
+    }
     const bool selectedPlaying = m_last.hasPlayback && m_last.isPlaying && m_last.deviceId == m_device;
+    m_timer.setTimerType(Qt::CoarseTimer);
     m_timer.start(pollIntervalMs(m_engineActive, selectedPlaying, m_failures));
 }

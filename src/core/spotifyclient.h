@@ -55,6 +55,7 @@ private:
     QString m_suppressedTrack;
     bool m_startupAttachTaken = false;
     QHash<QString, qint64> m_noticeTimes;
+    qint64 m_rateLimitNoticeUntil = 0;
 };
 
 #endif

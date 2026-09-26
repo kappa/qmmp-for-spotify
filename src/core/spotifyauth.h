@@ -22,6 +22,8 @@ public:
     bool hasCredentials() const;
     bool accessTokenValid() const;
     QString accessToken() const;
+    // the directory of the token file, which also holds the rate-limit state and api.log
+    QString dataDir() const;
 
     void login();
     void logout();
