@@ -42,6 +42,7 @@ private slots:
     void noPlaybackStopsUnlessEngineActive();
     void errorsBackOffThenStop();
     void automaticPollKeepsBackoff();
+    void confirmationPollsCoalesce();
     void interactionThrottle();
     void waitsForRateLimitBlock();
 };
@@ -218,12 +219,23 @@ void TestPollPolicy::errorsBackOffThenStop()
 
 void TestPollPolicy::automaticPollKeepsBackoff()
 {
-    QCOMPARE(pollSoonDelayMs(0, -1), kPollSoonMs);
-    QCOMPARE(pollSoonDelayMs(0, 50000), kPollSoonMs);
-    QCOMPARE(pollSoonDelayMs(1, 1500), kKeepTimer);
-    QCOMPARE(pollSoonDelayMs(3, 7000), kKeepTimer);
-    QCOMPARE(pollSoonDelayMs(3, -1), 8000);
-    QCOMPARE(pollSoonDelayMs(9, -1), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(0, -1, 0, 1000000), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(0, 50000, 0, 1000000), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(1, 1500, 0, 1000000), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(3, 7000, 0, 1000000), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(3, -1, 0, 1000000), 8000);
+    QCOMPARE(pollSoonDelayMs(9, -1, 0, 1000000), kKeepTimer);
+}
+
+void TestPollPolicy::confirmationPollsCoalesce()
+{
+    QCOMPARE(pollSoonDelayMs(0, -1, 998000, 1000000), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(0, -1, 999500, 1000000), 1500);
+    QCOMPARE(pollSoonDelayMs(0, 60000, 999900, 1000000), 1900);
+    QCOMPARE(pollSoonDelayMs(0, 1000, 999500, 1000000), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(0, 1500, 999500, 1000000), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(0, 100, 0, 1000000), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(0, 300, 0, 1000000), kKeepTimer);
 }
 
 void TestPollPolicy::interactionThrottle()

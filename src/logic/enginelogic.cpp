@@ -54,8 +54,9 @@ void EngineLogic::play()
     // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
     m_cancelledPause = m_pendingPause;
     m_pendingPause = false;
-    // a seek within the previous track is moot
+    // a seek or a start not yet sent for the previous track is moot
     m_pendingSeekMs = -1;
+    m_startPending = false;
     const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
     m_stoppedId.clear();
     if(m_current.isEmpty())
@@ -122,6 +123,27 @@ void EngineLogic::flushSeek()
     m_sink->apiSeek(positionMs);
 }
 
+void EngineLogic::flushStart()
+{
+    if(!m_startPending)
+        return;
+    const qint64 wait = m_startSentAt < 0 ? 0 : m_startSentAt + kStartGapMs - m_clock();
+    if(wait > 0)
+    {
+        // early: the pending start must not be lost
+        m_sink->scheduleStartFlush(wait);
+        return;
+    }
+    m_startPending = false;
+    m_startSentAt = m_clock();
+    // the start timeout counts from the request actually sent
+    m_playSentAt = m_clock();
+    if(m_skippingToQueued)
+        m_sink->apiNext();
+    else
+        m_sink->apiPlay(trackUri(m_current.id), m_pendingStartMs, m_activeGeneration);
+}
+
 void EngineLogic::stop()
 {
     // SoundCore::play() stops again after MediaPlayer::stop(); that second stop must not wipe
@@ -135,6 +157,7 @@ void EngineLogic::stop()
     m_activeGeneration = 0;
     m_current = Entry();
     m_pendingSeekMs = -1;
+    m_startPending = false;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_awaiting = false;
@@ -271,8 +294,7 @@ void EngineLogic::startOnDevice(qint64 positionMs)
     m_awaiting = true;
     m_skippingToQueued = false;
     m_activeGeneration = ++m_generation;
-    m_playSentAt = m_clock();
-    m_sink->apiPlay(trackUri(m_current.id), positionMs, m_activeGeneration);
+    sendStart(positionMs);
 }
 
 // the next track is already sitting in Spotify's queue: skip to it instead of apiPlay,
@@ -282,8 +304,16 @@ void EngineLogic::skipOnDevice()
     m_awaiting = true;
     m_skippingToQueued = true;
     m_activeGeneration = ++m_generation;
-    m_playSentAt = m_clock();
-    m_sink->apiNext();
+    sendStart(0);
+}
+
+// the first start of a burst goes out at once; later ones within kStartGapMs replace each other
+// and the latest follows when the gap ends (a held Next key sends about one play per second)
+void EngineLogic::sendStart(qint64 positionMs)
+{
+    m_pendingStartMs = positionMs;
+    m_startPending = true;
+    flushStart();
 }
 
 // a systemic failure (FatalError) stops qmmp; a track-specific one (NormalError) makes qmmp
@@ -296,6 +326,7 @@ void EngineLogic::fail(const QString &message, bool systemic)
     m_cancelledPause = false;
     m_current = Entry();
     m_pendingSeekMs = -1;
+    m_startPending = false;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_awaiting = false;
@@ -311,6 +342,7 @@ void EngineLogic::switchToNext(bool startNow)
     m_sink->reportState(EngineState::Stopped);
     m_current = m_next;
     m_pendingSeekMs = -1;
+    m_startPending = false;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_trackReported = false;
@@ -344,6 +376,7 @@ void EngineLogic::finish()
     }
     m_current = Entry();
     m_pendingSeekMs = -1;
+    m_startPending = false;
     m_awaiting = false;
     m_trackReported = false;
     m_sink->reportFinished();

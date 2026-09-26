@@ -48,6 +48,12 @@ SpotifyEngine::SpotifyEngine(QObject *parent)
     m_seekTimer.setTimerType(Qt::PreciseTimer);
     m_seekTimer.setInterval(int(EngineLogic::kSeekDebounceMs) + 5);
     connect(&m_seekTimer, &QTimer::timeout, this, [this] { m_logic.flushSeek(); });
+    m_startTimer.setSingleShot(true);
+    m_startTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_startTimer, &QTimer::timeout, this, [this] {
+        m_logic.flushStart();
+        publishTracks();
+    });
     m_ticker.setInterval(250);
     connect(&m_ticker, &QTimer::timeout, this, [this] {
         m_logic.tick();
@@ -262,6 +268,12 @@ void SpotifyEngine::reportError(const QString &message, bool fatal)
 void SpotifyEngine::reportNotice(const QString &message)
 {
     m_client->notify(message);
+}
+
+// precise timers never fire early; the margin absorbs millisecond rounding of the clock
+void SpotifyEngine::scheduleStartFlush(qint64 delayMs)
+{
+    m_startTimer.start(int(delayMs) + 5);
 }
 
 void SpotifyEngine::publishTracks()

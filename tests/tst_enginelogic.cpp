@@ -1,5 +1,6 @@
 #include <QtTest>
 #include "enginelogic.h"
+#include "pollpolicy.h"
 
 using namespace Qt::StringLiterals;
 
@@ -11,6 +12,8 @@ public:
     QStringList calls;
     quint64 lastGeneration = 0;
     QString lastError;
+    // the delay of the last scheduleStartFlush(); -1: none
+    qint64 startFlushMs = -1;
 
     void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) override
     {
@@ -36,6 +39,7 @@ public:
         lastError = message;
     }
     void reportNotice(const QString &message) override { calls << u"notice "_s + message; }
+    void scheduleStartFlush(qint64 delayMs) override { startFlushMs = delayMs; }
 };
 
 PlayerState deviceState(const QString &device, const QString &trackId, qint64 progressMs, bool isPlaying = true)
@@ -89,6 +93,10 @@ private slots:
     void interpolatesElapsed();
     void seeksCoalesce();
     void pendingSeekDroppedOnStop();
+    void rapidStartsCoalesce();
+    void pendingStartDroppedOnStop();
+    void skimmingStaysUnderBudget();
+    void heldNextKeyStaysUnderBudget();
     void systemicFailureStops();
     void trackFailureSkips();
     void systemicFailureOnTrackChangePausesPreviousTrack();
@@ -113,6 +121,8 @@ private slots:
 
 private:
     void startPlaying(const QString &trackId);
+    void clickNext(const QString &trackId);
+    int maxRequestsPer10s(qint64 clickGapMs, int clicks);
 
     qint64 m_now = 0;
     FakeSink m_sink;
@@ -302,6 +312,123 @@ void TestEngineLogic::pendingSeekDroppedOnStop()
     m_now += 300;
     m_logic->flushSeek();
     QVERIFY(!m_sink.calls.contains(u"seek 5000"_s));
+}
+
+// qmmp's Next: stop, then the next track, in one call stack
+void TestEngineLogic::clickNext(const QString &trackId)
+{
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/"_s + trackId));
+    m_logic->play();
+}
+
+void TestEngineLogic::rapidStartsCoalesce()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"b"_s);
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
+    m_now += 200;
+    clickNext(u"c"_s);
+    QCOMPARE(m_sink.startFlushMs, qint64(800));
+    m_now += 200;
+    clickNext(u"d"_s);
+    QCOMPARE(m_logic->trackIds(), QStringList { u"d"_s });
+    QCOMPARE(m_logic->state(), EngineState::Buffering);
+    m_now += 599;
+    m_logic->flushStart();
+    QVERIFY(!m_sink.calls.contains(u"play spotify:track:d 0"_s));
+    m_now += 1;
+    m_logic->flushStart();
+    m_logic->flushStart();
+    QVERIFY(!m_sink.calls.contains(u"play spotify:track:c 0"_s));
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:d 0"_s), 1);
+    QVERIFY(m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::pendingStartDroppedOnStop()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"b"_s);
+    m_now += 200;
+    clickNext(u"c"_s);
+    m_logic->stop();
+    m_now += 1000;
+    m_logic->flushStart();
+    QVERIFY(!m_sink.calls.contains(u"play spotify:track:c 0"_s));
+}
+
+// Next clicks every clickGapMs; each play's reply (150 ms later) asks for a confirmation poll,
+// and while the engine awaits a start the poller polls every 2 s: the largest number of
+// interactive requests (plays and polls) in any 10 s
+int TestEngineLogic::maxRequestsPer10s(qint64 clickGapMs, int clicks)
+{
+    startPlaying(u"a"_s);
+    const qint64 start = m_now;
+    const qint64 end = start + clickGapMs * clicks + 10000;
+    QList<qint64> requests;
+    QList<qint64> replies;
+    qint64 flushAt = -1;
+    qint64 pollAt = -1;
+    qint64 lastPoll = -100000;
+    int click = 0;
+    for(; m_now <= end; m_now += 10)
+    {
+        const qsizetype before = m_sink.calls.size();
+        if(click < clicks && m_now >= start + click * clickGapMs)
+        {
+            m_sink.startFlushMs = -1;
+            clickNext(u"t%1"_s.arg(click++));
+            if(m_sink.startFlushMs >= 0)
+                flushAt = m_now + m_sink.startFlushMs;
+        }
+        if(flushAt >= 0 && m_now >= flushAt)
+        {
+            flushAt = -1;
+            m_logic->flushStart();
+        }
+        for(qsizetype i = before; i < m_sink.calls.size(); i++)
+        {
+            if(m_sink.calls.at(i).startsWith(u"play "_s))
+            {
+                requests << m_now;
+                replies << m_now + 150;
+            }
+        }
+        while(!replies.isEmpty() && replies.first() <= m_now)
+        {
+            replies.removeFirst();
+            const int delay = pollSoonDelayMs(0, pollAt >= 0 ? int(pollAt - m_now) : -1, lastPoll, m_now);
+            if(delay != kKeepTimer)
+                pollAt = m_now + delay;
+        }
+        if(pollAt >= 0 && m_now >= pollAt)
+        {
+            requests << m_now;
+            lastPoll = m_now;
+            pollAt = m_now + 2000;
+        }
+    }
+    int most = 0;
+    for(const qint64 from : requests)
+    {
+        int count = 0;
+        for(const qint64 at : requests)
+            count += at >= from && at < from + 10000;
+        most = qMax(most, count);
+    }
+    return most;
+}
+
+void TestEngineLogic::skimmingStaysUnderBudget()
+{
+    const int requests = maxRequestsPer10s(667, 15);
+    QVERIFY2(requests <= 20, qPrintable(QString::number(requests)));
+}
+
+void TestEngineLogic::heldNextKeyStaysUnderBudget()
+{
+    const int requests = maxRequestsPer10s(33, 150);
+    QVERIFY2(requests <= 20, qPrintable(QString::number(requests)));
 }
 
 void TestEngineLogic::enqueueDoesNotQueueImmediately()
@@ -665,6 +792,7 @@ void TestEngineLogic::ignoresFailureOfSupersededPlay()
     const quint64 first = m_sink.lastGeneration;
     m_logic->stop();
     QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += EngineLogic::kStartGapMs;
     m_logic->play();
     const quint64 second = m_sink.lastGeneration;
     QVERIFY(first != second);

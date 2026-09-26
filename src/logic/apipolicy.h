@@ -25,9 +25,8 @@ qint64 capBlock(qint64 blockedUntilMs, qint64 nowMs);
 bool isBlocked(qint64 blockedUntilMs, qint64 nowMs);
 // a request made during a short block waits for its end; one made during a long block fails
 enum class GateAction { Send, Hold, Refuse };
-GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs);
-// the same for the remaining 429 block and the remaining local block after a budget overrun:
-// a bulk request (paged load, link expansion) waits through the overrun block, however long
+// from the remaining 429 block and the remaining local block after a budget overrun; a bulk
+// request (paged load, link expansion) waits through the overrun block, however long
 GateAction gateAction(qint64 rateLimitRemainingMs, qint64 overrunRemainingMs, bool bulk);
 QString rateLimitMessage(qint64 remainingMs);
 bool isRateLimitMessage(const QString &message);

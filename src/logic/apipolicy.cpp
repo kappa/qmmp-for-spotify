@@ -36,13 +36,6 @@ bool isBlocked(qint64 blockedUntilMs, qint64 nowMs)
     return nowMs < blockedUntilMs;
 }
 
-GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs)
-{
-    if(!isBlocked(blockedUntilMs, nowMs))
-        return GateAction::Send;
-    return blockedUntilMs - nowMs <= kMaxRetryAfterSeconds * 1000 ? GateAction::Hold : GateAction::Refuse;
-}
-
 GateAction gateAction(qint64 rateLimitRemainingMs, qint64 overrunRemainingMs, bool bulk)
 {
     const qint64 remaining = qMax(rateLimitRemainingMs, overrunRemainingMs);

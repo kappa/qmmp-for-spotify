@@ -16,6 +16,8 @@ const qint64 kBeforeEndMs = 5000;
 // "did not advance" fallback acts on fresh state
 const qint64 kAfterEndMs = 1500;
 const qint64 kInteractionGapMs = 5000;
+// command replies poll at most once per this long after the last poll
+const qint64 kConfirmGapMs = 2000;
 // polls fast while waiting for a start at most this long: a device that never starts our
 // track must not be polled every 2 s for good
 const qint64 kAwaitingFastMs = 20000;
@@ -87,13 +89,16 @@ bool isPollHardFail(int failures)
     return failures > kMaxPollRetries;
 }
 
-int pollSoonDelayMs(int failures, int remainingMs)
+int pollSoonDelayMs(int failures, int remainingMs, qint64 lastPollMs, qint64 nowMs)
 {
-    if(failures == 0)
-        return kPollSoonMs;
-    if(isPollHardFail(failures) || remainingMs >= 0)
+    if(failures > 0)
+        return isPollHardFail(failures) || remainingMs >= 0 ? kKeepTimer : retryDelayMs(failures);
+    // a burst of commands (Next clicks, seeks) must not turn into a poll per command
+    const qint64 delay = qMax<qint64>(kPollSoonMs, lastPollMs + kConfirmGapMs - nowMs);
+    // an armed poll that is not too early (the device needs a moment) confirms as well
+    if(remainingMs >= kPollSoonMs && remainingMs <= delay)
         return kKeepTimer;
-    return retryDelayMs(failures);
+    return int(delay);
 }
 
 qint64 predictedTrackEndMs(const PlayerState &state, qint64 pollTimeMs)

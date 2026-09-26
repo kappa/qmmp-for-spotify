@@ -53,9 +53,10 @@ int nextPollDelayMs(const PollInputs &inputs);
 bool startsTrackEndCycle(const QString &trackId, qint64 progressMs, const PlayerState &state);
 bool isPollHardFail(int failures);
 // how an automatic poll request (a command's reply, the engine becoming active) re-arms the
-// poll timer (remainingMs < 0: no timer), or kKeepTimer: soon, but never ahead of the error
-// backoff
-int pollSoonDelayMs(int failures, int remainingMs);
+// poll timer (remainingMs < 0: no timer), or kKeepTimer: soon, but at most one poll per 2 s
+// after the last one was sent (a later request is merged into the poll at the end of that
+// window), and never ahead of the error backoff
+int pollSoonDelayMs(int failures, int remainingMs, qint64 lastPollMs, qint64 nowMs);
 // when the track in a successful poll ends if it keeps playing; 0 when nothing plays
 qint64 predictedTrackEndMs(const PlayerState &state, qint64 pollTimeMs);
 // how a focus, dialog or user-command trigger re-arms the poll timer (remainingMs < 0: no timer),

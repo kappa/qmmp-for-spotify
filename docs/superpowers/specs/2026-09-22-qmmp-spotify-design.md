@@ -107,8 +107,10 @@ plugin install location). The distro's older qmmp is not a target.
   - stopped polling resumes on interaction: qmmp becoming focused or a Spotify dialog
     opened, at most one poll per 5 s after the last one was sent (inside that window a
     trigger only brings a later poll forward to the current schedule, or, when polling had
-    stopped, polls when the window ends). Command replies poll soon (`pollSoon()`, not
-    throttled); one arriving while a poll is in flight polls again after it. During the
+    stopped, polls when the window ends). Command replies poll soon (`pollSoon()`, 300 ms
+    after the reply, but at most one poll per 2 s after the last poll was sent: a later
+    request is merged into one poll at the end of that window); one arriving while a poll
+    is in flight polls again after it. During the
     error backoff `pollSoon()` never polls ahead of the backoff schedule (a failing queue
     call must not turn it into a poll per reply); only a user playback command (play,
     pause, seek, device choice) or an interaction polls earlier, subject to the same 5 s
@@ -306,6 +308,13 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
     Songs | links>: rate limited, try again in N min"), so it is not hidden with the block's
     other rate-limit notices.
   At most 50 requests per 10 s in total, and only while a load runs.
+- Track starts are coalesced: the first play (or skip to the queued track) of a burst goes out
+  at once, later ones within 1 s replace each other and the latest is sent when the 1 s ends,
+  so a held Next key sends about one play per second; qmmp's track and state switch at once,
+  and the start timeout counts from the request actually sent. A pending start is dropped
+  when qmmp stops, fails or the track changes. With the 2 s confirmation-poll gap, skimming
+  (15 Next clicks in 10 s) or a held Next key stays at about 15 interactive requests per
+  10 s, well under the budget.
 - Seeks are coalesced like volume: the engine sends one seek 300 ms after the last of a burst
   (a held key, a scrolled slider); the local position moves at once. A pending seek is
   dropped when the track changes or stops.

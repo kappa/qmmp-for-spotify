@@ -70,7 +70,8 @@ void SpotifyPoller::pollSoon()
         return;
     }
     // failing commands (a queue call while offline) must not shorten the backoff
-    const int delay = pollSoonDelayMs(m_failures, m_timer.isActive() ? m_timer.remainingTime() : -1);
+    const int delay = pollSoonDelayMs(m_failures, m_timer.isActive() ? m_timer.remainingTime() : -1, m_lastPollAt,
+                                      QDateTime::currentMSecsSinceEpoch());
     if(delay != kKeepTimer)
         arm(delay);
 }

@@ -111,10 +111,10 @@ void TestApiPolicy::blockIsCappedAt24Hours()
 
 void TestApiPolicy::shortBlockHoldsLongBlockRefuses()
 {
-    QCOMPARE(gateAction(0, 1000), GateAction::Send);
-    QCOMPARE(gateAction(1000, 1000), GateAction::Send);
-    QCOMPARE(gateAction(11000, 1000), GateAction::Hold);
-    QCOMPARE(gateAction(11001, 1000), GateAction::Refuse);
+    QCOMPARE(gateAction(0, 0, false), GateAction::Send);
+    QCOMPARE(gateAction(-1000, 0, false), GateAction::Send);
+    QCOMPARE(gateAction(10000, 0, false), GateAction::Hold);
+    QCOMPARE(gateAction(10001, 0, false), GateAction::Refuse);
 }
 
 void TestApiPolicy::rateLimitMessages()

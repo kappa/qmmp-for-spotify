@@ -25,6 +25,8 @@ public:
     virtual void reportFinished() = 0;
     virtual void reportError(const QString &message, bool fatal) = 0;
     virtual void reportNotice(const QString &message) = 0;
+    // a coalesced track start is due in delayMs: call flushStart() then
+    virtual void scheduleStartFlush(qint64 delayMs) = 0;
 };
 
 class EngineLogic
@@ -35,6 +37,9 @@ public:
     static constexpr qint64 kStartTimeoutMs = 10000;
     // seeks are sent this long after the last one of a burst (a held key, a scrolled slider)
     static constexpr qint64 kSeekDebounceMs = 300;
+    // track starts (play, skip to the queued track) go out at most once per this long; the
+    // latest of a burst (a held Next key) follows when it ends
+    static constexpr qint64 kStartGapMs = 1000;
 
     EngineLogic(EngineSink *sink, Clock clock);
 
@@ -45,6 +50,8 @@ public:
     void seek(qint64 positionMs);
     // sends the pending seek once kSeekDebounceMs passed since the last seek()
     void flushSeek();
+    // sends the coalesced track start once kStartGapMs passed since the last one was sent
+    void flushStart();
     void stop();
     void flushPendingPause();
     void updateState(const PlayerState &state);
@@ -81,6 +88,7 @@ private:
     void finish();
     void deviceStopped();
     void skipOnDevice();
+    void sendStart(qint64 positionMs);
     void maybeQueueNext();
     bool nearEnd() const;
     bool inCommandGrace() const;
@@ -104,6 +112,10 @@ private:
     // the last seek() of a burst, sent by flushSeek(); -1: none
     qint64 m_pendingSeekMs = -1;
     qint64 m_seekAt = 0;
+    // the coalesced track start (play from m_pendingStartMs, or the skip to the queued track)
+    bool m_startPending = false;
+    qint64 m_pendingStartMs = 0;
+    qint64 m_startSentAt = -1;
     bool m_pendingPause = false;
     // the pause play() cancelled, restored if that play fails
     bool m_cancelledPause = false;
