@@ -33,6 +33,8 @@ public:
     using Clock = std::function<qint64()>;
 
     static constexpr qint64 kStartTimeoutMs = 10000;
+    // seeks are sent this long after the last one of a burst (a held key, a scrolled slider)
+    static constexpr qint64 kSeekDebounceMs = 300;
 
     EngineLogic(EngineSink *sink, Clock clock);
 
@@ -41,6 +43,8 @@ public:
     void play();
     void pause();
     void seek(qint64 positionMs);
+    // sends the pending seek once kSeekDebounceMs passed since the last seek()
+    void flushSeek();
     void stop();
     void flushPendingPause();
     void updateState(const PlayerState &state);
@@ -97,6 +101,9 @@ private:
     qint64 m_progressMs = 0;
     qint64 m_progressAt = 0;
     qint64 m_commandAt = -1;
+    // the last seek() of a burst, sent by flushSeek(); -1: none
+    qint64 m_pendingSeekMs = -1;
+    qint64 m_seekAt = 0;
     bool m_pendingPause = false;
     // the pause play() cancelled, restored if that play fails
     bool m_cancelledPause = false;

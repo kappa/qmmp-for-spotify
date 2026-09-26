@@ -3,6 +3,7 @@
 #include <qmmpui/playlistmanager.h>
 #include <qmmpui/playlistmodel.h>
 #include <qmmpui/uihelper.h>
+#include "apipolicy.h"
 #include "devicedialog.h"
 #include "follower.h"
 #include "linkexpander.h"
@@ -82,8 +83,9 @@ void SpotifyGeneral::loadPlaylist()
     SpotifyClient::instance()->api()->playlistTracks(playlist.id, [self, name = playlist.name](const ApiResult &result, const QList<SpotifyTrack> &tracks) {
         if(!self)
             return;
+        // a rate-limit failure names the load, so the block's notice suppression does not hide it
         if(!result.ok)
-            SpotifyClient::instance()->notify(result.message);
+            SpotifyClient::instance()->notify(loadFailureMessage(name, result.message));
         else
             self->fillPlayList(tr("Spotify: %1").arg(name), tracks);
     });
@@ -98,7 +100,7 @@ void SpotifyGeneral::loadLikedSongs()
         if(!self)
             return;
         if(!result.ok)
-            SpotifyClient::instance()->notify(result.message);
+            SpotifyClient::instance()->notify(loadFailureMessage(tr("Liked Songs"), result.message));
         else
             self->fillPlayList(tr("Spotify: Liked Songs"), tracks);
     });

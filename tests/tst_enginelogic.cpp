@@ -87,6 +87,8 @@ private slots:
     void followsAgainWhenDeviceReturns();
     void vanishedPlaybackIgnoredWhileAwaitingOrInGrace();
     void interpolatesElapsed();
+    void seeksCoalesce();
+    void pendingSeekDroppedOnStop();
     void systemicFailureStops();
     void trackFailureSkips();
     void systemicFailureOnTrackChangePausesPreviousTrack();
@@ -271,6 +273,35 @@ void TestEngineLogic::fallbackAtTrackEndRunsOnce()
     const qsizetype sent = m_sink.calls.size();
     m_logic->playFailed(m_sink.lastGeneration, u"Spotify: offline"_s, true);
     QCOMPARE(m_sink.calls.mid(sent), QStringList { u"fatal"_s });
+}
+
+void TestEngineLogic::seeksCoalesce()
+{
+    startPlaying(u"a"_s);
+    m_logic->seek(1000);
+    m_now += 100;
+    m_logic->seek(2000);
+    m_now += 100;
+    m_logic->seek(3000);
+    QCOMPARE(m_logic->elapsed(), qint64(3000));
+    m_logic->flushSeek();
+    m_now += 299;
+    m_logic->flushSeek();
+    QVERIFY(m_sink.calls.isEmpty());
+    m_now += 1;
+    m_logic->flushSeek();
+    m_logic->flushSeek();
+    QCOMPARE(m_sink.calls, QStringList { u"seek 3000"_s });
+}
+
+void TestEngineLogic::pendingSeekDroppedOnStop()
+{
+    startPlaying(u"a"_s);
+    m_logic->seek(5000);
+    m_logic->stop();
+    m_now += 300;
+    m_logic->flushSeek();
+    QVERIFY(!m_sink.calls.contains(u"seek 5000"_s));
 }
 
 void TestEngineLogic::enqueueDoesNotQueueImmediately()

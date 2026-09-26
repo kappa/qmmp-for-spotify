@@ -1,9 +1,11 @@
 #ifndef SPOTIFYAPI_H
 #define SPOTIFYAPI_H
 
+#include <deque>
 #include <functional>
 #include <QElapsedTimer>
 #include <QObject>
+#include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
 #include "requestbudget.h"
@@ -59,7 +61,7 @@ public:
 
     // after a 429 no request is sent until this time (ms since the epoch; kept across restarts),
     // after a budget overrun for 1 min (not kept)
-    qint64 blockedUntil() const { return qMax(m_blockedUntil, m_overrunBlockedUntil); }
+    qint64 blockedUntil() const;
     bool isBlocked() const;
 
 signals:
@@ -70,13 +72,17 @@ signals:
 
 private:
     // bulk: one of many requests of a paged load or a link expansion; it waits for a free slot
-    // in the request budget instead of failing
+    // in its own budget instead of failing (woken: its turn came, it goes before the queue)
     void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false,
-                 bool bulk = false);
+                 bool bulk = false, bool woken = false);
     // true when the request was held or refused instead of sent
     bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried,
               bool bulk);
     void refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback);
+    void waitForBulkSlot(std::function<void()> send, bool first);
+    void scheduleBulkWake();
+    void wakeBulk();
+    qint64 overrunRemainingMs() const;
     void blockFor(int retryAfterSeconds);
     void clearBlock();
     template <typename T>
@@ -87,10 +93,15 @@ private:
     QNetworkAccessManager *m_network;
     QString m_dataDir;
     qint64 m_blockedUntil = 0;
+    // the budgets and the overrun block run on a monotonic clock: a wall-clock step must not
+    // freeze or free them
+    QElapsedTimer m_clock;
     qint64 m_overrunBlockedUntil = 0;
-    // on a monotonic clock: a wall-clock step must not freeze or free the window
-    QElapsedTimer m_budgetClock;
-    RequestBudget m_budget;
+    RequestBudget m_interactiveBudget { kInteractiveBudget };
+    RequestBudget m_bulkBudget { kBulkBudget };
+    // bulk requests waiting for a slot, woken in order, one per free slot
+    std::deque<std::function<void()>> m_bulkWaiters;
+    QTimer m_bulkTimer;
 };
 
 #endif

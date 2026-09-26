@@ -1,33 +1,40 @@
 #include "requestbudget.h"
 
-bool RequestBudget::take(qint64 nowMs, bool bulk)
+RequestBudget::RequestBudget(int maxRequests) : m_max(maxRequests)
+{}
+
+bool RequestBudget::take(qint64 nowMs)
 {
-    while(!m_sent.empty() && nowMs - m_sent.front().at >= kWindowMs)
+    while(!m_sent.empty() && nowMs - m_sent.front() >= kWindowMs)
         m_sent.pop_front();
-    if(waitMs(nowMs, bulk) > 0)
+    if(int(m_sent.size()) >= m_max)
         return false;
-    m_sent.push_back({ nowMs, bulk });
+    m_sent.push_back(nowMs);
     return true;
 }
 
 // the window frees one slot at a time, oldest first
-qint64 RequestBudget::waitMs(qint64 nowMs, bool bulk) const
+qint64 RequestBudget::waitMs(qint64 nowMs) const
 {
-    int total = 0;
-    int bulkCount = 0;
-    qint64 totalFreeAt = nowMs;
-    qint64 bulkFreeAt = nowMs;
-    for(const Sent &sent : m_sent)
+    int live = 0;
+    qint64 oldest = nowMs;
+    for(const qint64 at : m_sent)
     {
-        if(nowMs - sent.at >= kWindowMs)
+        if(nowMs - at >= kWindowMs)
             continue;
-        if(total++ == 0)
-            totalFreeAt = sent.at + kWindowMs;
-        if(sent.bulk && bulkCount++ == 0)
-            bulkFreeAt = sent.at + kWindowMs;
+        if(live++ == 0)
+            oldest = at;
     }
-    qint64 freeAt = total >= kMaxRequests ? totalFreeAt : nowMs;
-    if(bulk && bulkCount >= kMaxBulkRequests)
-        freeAt = qMax(freeAt, bulkFreeAt);
-    return freeAt - nowMs;
+    return live >= m_max ? oldest + kWindowMs - nowMs : 0;
+}
+
+int RequestBudget::available(qint64 nowMs) const
+{
+    int live = 0;
+    for(const qint64 at : m_sent)
+    {
+        if(nowMs - at < kWindowMs)
+            live++;
+    }
+    return qMax(m_max - live, 0);
 }

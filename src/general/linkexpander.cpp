@@ -1,11 +1,14 @@
 #include <qmmpui/playlistmanager.h>
 #include <qmmpui/playlistmodel.h>
+#include "apipolicy.h"
 #include "followerlogic.h"
 #include "linkexpander.h"
 #include "spotifyapi.h"
 #include "spotifyclient.h"
 #include "spotifylink.h"
 #include "trackbuilder.h"
+
+using namespace Qt::StringLiterals;
 
 LinkExpander::LinkExpander(QObject *parent) : QObject(parent)
 {
@@ -54,7 +57,8 @@ void LinkExpander::replace(QPointer<PlayListModel> model, PlayListTrack *track, 
     if(!model)
         return;
     if(!result.ok)
-        SpotifyClient::instance()->notify(expansionFailureMessage(rawPath, result.status, result.message));
+        SpotifyClient::instance()->notify(
+            loadFailureMessage(u"links"_s, expansionFailureMessage(rawPath, result.status, result.message)));
     // track may have been deleted (or its address reused) while the request was in flight;
     // only trust it once we find it still live in the model, at the path we captured before asking.
     PlayListTrack *live = nullptr;

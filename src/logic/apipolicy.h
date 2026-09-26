@@ -26,10 +26,16 @@ bool isBlocked(qint64 blockedUntilMs, qint64 nowMs);
 // a request made during a short block waits for its end; one made during a long block fails
 enum class GateAction { Send, Hold, Refuse };
 GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs);
+// the same for the remaining 429 block and the remaining local block after a budget overrun:
+// a bulk request (paged load, link expansion) waits through the overrun block, however long
+GateAction gateAction(qint64 rateLimitRemainingMs, qint64 overrunRemainingMs, bool bulk);
 QString rateLimitMessage(qint64 remainingMs);
 bool isRateLimitMessage(const QString &message);
 // a request not sent because too many were sent in a short time: something loops
 QString budgetExceededMessage();
+// a failed load of <what> (a playlist, Liked Songs, links): a rate-limit message names what failed,
+// so it is not hidden with the other rate-limit notices of the block
+QString loadFailureMessage(const QString &what, const QString &apiMessage);
 // the local block a budget overrun imposes through the rate-limit gate (1 min, never shortening)
 qint64 budgetOverrunBlock(qint64 blockedUntilMs, qint64 nowMs);
 // a short wait is retried once automatically; a long one fails at once

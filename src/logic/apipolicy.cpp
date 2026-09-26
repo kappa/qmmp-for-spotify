@@ -43,6 +43,26 @@ GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs)
     return blockedUntilMs - nowMs <= kMaxRetryAfterSeconds * 1000 ? GateAction::Hold : GateAction::Refuse;
 }
 
+GateAction gateAction(qint64 rateLimitRemainingMs, qint64 overrunRemainingMs, bool bulk)
+{
+    const qint64 remaining = qMax(rateLimitRemainingMs, overrunRemainingMs);
+    if(remaining <= 0)
+        return GateAction::Send;
+    if(remaining <= qint64(kMaxRetryAfterSeconds) * 1000)
+        return GateAction::Hold;
+    // a bulk request is finite work: it waits out the local block, not Spotify's long one
+    if(bulk && rateLimitRemainingMs <= qint64(kMaxRetryAfterSeconds) * 1000)
+        return GateAction::Hold;
+    return GateAction::Refuse;
+}
+
+QString loadFailureMessage(const QString &what, const QString &apiMessage)
+{
+    if(!isRateLimitMessage(apiMessage))
+        return apiMessage;
+    return u"Spotify: couldn't load %1: %2"_s.arg(what, apiMessage.mid(u"Spotify: "_s.size()));
+}
+
 QString rateLimitMessage(qint64 remainingMs)
 {
     const qint64 seconds = (qMax(remainingMs, qint64(0)) + 999) / 1000;

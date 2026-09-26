@@ -8,14 +8,14 @@ private slots:
     void allowsThirtyPerWindow();
     void windowRolls();
     void refusalsDoNotCount();
-    void bulkLeavesRoomForOthers();
-    void bulkWaitsForASlot();
-    void othersWaitOnlyForTheTotal();
+    void waitsForTheOldest();
+    void countsFreeSlots();
+    void budgetsAreSeparate();
 };
 
 void TestRequestBudget::allowsThirtyPerWindow()
 {
-    RequestBudget budget;
+    RequestBudget budget(kInteractiveBudget);
     for(int i = 0; i < 30; i++)
         QVERIFY(budget.take(1000 + i));
     QVERIFY(!budget.take(1030));
@@ -26,7 +26,7 @@ void TestRequestBudget::allowsThirtyPerWindow()
 
 void TestRequestBudget::windowRolls()
 {
-    RequestBudget budget;
+    RequestBudget budget(kInteractiveBudget);
     for(int i = 0; i < 30; i++)
         QVERIFY(budget.take(i * 300));
     QVERIFY(!budget.take(9999));
@@ -37,7 +37,7 @@ void TestRequestBudget::windowRolls()
 
 void TestRequestBudget::refusalsDoNotCount()
 {
-    RequestBudget budget;
+    RequestBudget budget(kInteractiveBudget);
     for(int i = 0; i < 30; i++)
         QVERIFY(budget.take(0));
     for(int i = 0; i < 100; i++)
@@ -46,43 +46,40 @@ void TestRequestBudget::refusalsDoNotCount()
         QVERIFY(budget.take(10000));
 }
 
-void TestRequestBudget::bulkLeavesRoomForOthers()
+void TestRequestBudget::waitsForTheOldest()
 {
-    RequestBudget budget;
+    RequestBudget budget(kBulkBudget);
+    QCOMPARE(budget.waitMs(0), 0);
     for(int i = 0; i < 20; i++)
-        QVERIFY(budget.take(i, true));
-    QVERIFY(!budget.take(100, true));
-    for(int i = 0; i < 10; i++)
-        QVERIFY(budget.take(200));
-    QVERIFY(!budget.take(300));
+        QVERIFY(budget.take(1000 + i * 100));
+    QVERIFY(!budget.take(5000));
+    QCOMPARE(budget.waitMs(5000), 6000);
+    QCOMPARE(budget.waitMs(11000), 0);
+    QVERIFY(budget.take(11000));
 }
 
-void TestRequestBudget::bulkWaitsForASlot()
+void TestRequestBudget::countsFreeSlots()
 {
-    RequestBudget budget;
-    QCOMPARE(budget.waitMs(0, true), 0);
+    RequestBudget budget(kBulkBudget);
+    QCOMPARE(budget.available(0), 20);
     for(int i = 0; i < 20; i++)
-        QVERIFY(budget.take(1000 + i * 100, true));
-    QCOMPARE(budget.waitMs(5000, true), 6000);
-    QCOMPARE(budget.waitMs(5000, false), 0);
-    QVERIFY(budget.take(11000, true));
-
-    RequestBudget full;
-    for(int i = 0; i < 10; i++)
-        QVERIFY(full.take(i * 100));
-    for(int i = 0; i < 20; i++)
-        QVERIFY(full.take(2000 + i * 100, true));
-    QCOMPARE(full.waitMs(4000, true), 8000);
-    QCOMPARE(full.waitMs(4000, false), 6000);
+        QVERIFY(budget.take(i < 5 ? 0 : 1000));
+    QCOMPARE(budget.available(5000), 0);
+    QCOMPARE(budget.available(10000), 5);
+    QCOMPARE(budget.available(11000), 20);
 }
 
-void TestRequestBudget::othersWaitOnlyForTheTotal()
+void TestRequestBudget::budgetsAreSeparate()
 {
-    RequestBudget budget;
+    QCOMPARE(kInteractiveBudget, 30);
+    QCOMPARE(kBulkBudget, 20);
+    RequestBudget interactive(kInteractiveBudget);
+    RequestBudget bulk(kBulkBudget);
+    for(int i = 0; i < 20; i++)
+        QVERIFY(bulk.take(0));
+    QVERIFY(!bulk.take(0));
     for(int i = 0; i < 30; i++)
-        QVERIFY(budget.take(i * 100));
-    QCOMPARE(budget.waitMs(5000, false), 5000);
-    QCOMPARE(budget.waitMs(10000, false), 0);
+        QVERIFY(interactive.take(0));
 }
 
 QTEST_APPLESS_MAIN(TestRequestBudget)

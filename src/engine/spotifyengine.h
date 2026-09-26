@@ -51,6 +51,7 @@ private:
     QTimer m_ticker;
     VolumeLogic m_volume;
     QTimer m_volumeTimer;
+    QTimer m_seekTimer;
 };
 
 #endif

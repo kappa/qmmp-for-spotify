@@ -66,7 +66,21 @@ SpotifyApi::SpotifyApi(SpotifyAuth *auth, QObject *parent)
     if(file.open(QIODevice::ReadOnly))
         m_blockedUntil = capBlock(file.readAll().trimmed().toLongLong(), now());
     connect(auth, &SpotifyAuth::loggedOut, this, &SpotifyApi::clearBlock);
-    m_budgetClock.start();
+    m_clock.start();
+    m_bulkTimer.setSingleShot(true);
+    m_bulkTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_bulkTimer, &QTimer::timeout, this, &SpotifyApi::wakeBulk);
+}
+
+qint64 SpotifyApi::overrunRemainingMs() const
+{
+    return qMax<qint64>(m_overrunBlockedUntil - m_clock.elapsed(), 0);
+}
+
+qint64 SpotifyApi::blockedUntil() const
+{
+    const qint64 overrun = overrunRemainingMs();
+    return overrun > 0 ? qMax(m_blockedUntil, now() + overrun) : m_blockedUntil;
 }
 
 bool SpotifyApi::isBlocked() const
@@ -75,16 +89,19 @@ bool SpotifyApi::isBlocked() const
 }
 
 // a short block holds the request until it ends, then it passes the gate again; during a long
-// one the callback runs on the next event-loop turn: callers may be in the middle of a state change
+// one the callback runs on the next event-loop turn: callers may be in the middle of a state change.
+// Bulk requests wait out a budget overrun block of any length.
 bool SpotifyApi::gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback,
                       bool retried, bool bulk)
 {
-    switch(gateAction(blockedUntil(), now()))
+    const qint64 rateLimitRemaining = qMax<qint64>(m_blockedUntil - now(), 0);
+    const qint64 remaining = qMax(rateLimitRemaining, overrunRemainingMs());
+    switch(gateAction(rateLimitRemaining, overrunRemainingMs(), bulk))
     {
     case GateAction::Send:
         return false;
     case GateAction::Hold:
-        QTimer::singleShot(int(blockedUntil() - now()) + kRetryMarginMs, Qt::PreciseTimer, this,
+        QTimer::singleShot(int(remaining) + kRetryMarginMs, Qt::PreciseTimer, this,
                            [=] { request(verb, url, body, callback, retried, bulk); });
         return true;
     case GateAction::Refuse:
@@ -94,16 +111,46 @@ bool SpotifyApi::gate(const QByteArray &verb, const QUrl &url, const QByteArray 
     ApiResult result;
     result.status = 429;
     result.rateLimited = true;
-    result.message = rateLimitMessage(blockedUntil() - now());
+    result.message = rateLimitMessage(remaining);
     QTimer::singleShot(0, this, [callback, result] { callback(result); });
     return true;
+}
+
+void SpotifyApi::waitForBulkSlot(std::function<void()> send, bool first)
+{
+    if(first)
+        m_bulkWaiters.push_front(std::move(send));
+    else
+        m_bulkWaiters.push_back(std::move(send));
+    scheduleBulkWake();
+}
+
+void SpotifyApi::scheduleBulkWake()
+{
+    if(m_bulkWaiters.empty())
+        return;
+    const int delay = int(m_bulkBudget.waitMs(m_clock.elapsed())) + kRetryMarginMs;
+    if(!m_bulkTimer.isActive() || m_bulkTimer.remainingTime() > delay)
+        m_bulkTimer.start(delay);
+}
+
+// one waiter per free slot, oldest first; each goes through the gate and the token again
+void SpotifyApi::wakeBulk()
+{
+    for(int free = m_bulkBudget.available(m_clock.elapsed()); free > 0 && !m_bulkWaiters.empty(); free--)
+    {
+        const std::function<void()> send = std::move(m_bulkWaiters.front());
+        m_bulkWaiters.pop_front();
+        send();
+    }
+    scheduleBulkWake();
 }
 
 // something sends in a loop: all requests stop for a while, through the rate-limit gate
 void SpotifyApi::refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback)
 {
     logApiRequest(m_dataDir, verb, pathQuery(url), 0, 0, u"budget"_s);
-    m_overrunBlockedUntil = budgetOverrunBlock(m_overrunBlockedUntil, now());
+    m_overrunBlockedUntil = budgetOverrunBlock(m_overrunBlockedUntil, m_clock.elapsed());
     ApiResult result;
     result.message = budgetExceededMessage();
     result.budgetExceeded = true;
@@ -137,7 +184,7 @@ void SpotifyApi::blockFor(int retryAfterSeconds)
 }
 
 void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried,
-                         bool bulk)
+                         bool bulk, bool woken)
 {
     if(gate(verb, url, body, callback, retried, bulk))
         return;
@@ -152,15 +199,20 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
         // a 429 may have arrived while the token was being refreshed
         if(gate(verb, url, body, callback, retried, bulk))
             return;
-        // a safety net against request loops; token refreshes do not count. Bulk requests are
-        // finite (pages, pasted links) and wait for a slot, through the gate again
-        if(!m_budget.take(m_budgetClock.elapsed(), bulk))
+        // token refreshes are not counted. Bulk requests are finite (pages, pasted links): they
+        // are paced by their own budget and wait in line; the interactive budget is a safety net
+        // against request loops and does not see bulk traffic
+        if(bulk)
         {
-            if(bulk)
-                QTimer::singleShot(int(m_budget.waitMs(m_budgetClock.elapsed(), true)) + kRetryMarginMs, Qt::PreciseTimer,
-                                   this, [=] { request(verb, url, body, callback, retried, bulk); });
-            else
-                refuseOverBudget(verb, url, callback);
+            if((!woken && !m_bulkWaiters.empty()) || !m_bulkBudget.take(m_clock.elapsed()))
+            {
+                waitForBulkSlot([=] { request(verb, url, body, callback, retried, bulk, true); }, woken);
+                return;
+            }
+        }
+        else if(!m_interactiveBudget.take(m_clock.elapsed()))
+        {
+            refuseOverBudget(verb, url, callback);
             return;
         }
         QNetworkRequest networkRequest(url);

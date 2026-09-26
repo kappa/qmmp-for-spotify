@@ -19,6 +19,9 @@ private slots:
     void rateLimitMessages();
     void rateLimitDecisionUsesWholeBlock();
     void budgetOverrunBlocksOneMinute();
+    void bulkWaitsThroughOverrunBlock_data();
+    void bulkWaitsThroughOverrunBlock();
+    void loadFailureNamesWhat();
     void noActiveDevice();
     void passesSpotifyMessage();
     void volumeControlDisallowed();
@@ -141,6 +144,42 @@ void TestApiPolicy::budgetOverrunBlocksOneMinute()
     QCOMPARE(budgetOverrunBlock(0, 1000000), 1060000);
     QCOMPARE(budgetOverrunBlock(2000000, 1000000), 2000000);
     QCOMPARE(budgetExceededMessage(), u"Spotify: too many requests, pausing for 1 min"_s);
+}
+
+void TestApiPolicy::bulkWaitsThroughOverrunBlock_data()
+{
+    QTest::addColumn<qint64>("rateLimitMs");
+    QTest::addColumn<qint64>("overrunMs");
+    QTest::addColumn<bool>("bulk");
+    QTest::addColumn<int>("action");
+
+    QTest::newRow("open") << qint64(0) << qint64(0) << false << int(GateAction::Send);
+    QTest::newRow("open, bulk") << qint64(0) << qint64(0) << true << int(GateAction::Send);
+    QTest::newRow("short 429") << qint64(5000) << qint64(0) << false << int(GateAction::Hold);
+    QTest::newRow("long 429") << qint64(30000) << qint64(0) << false << int(GateAction::Refuse);
+    QTest::newRow("long 429, bulk") << qint64(30000) << qint64(0) << true << int(GateAction::Refuse);
+    QTest::newRow("overrun") << qint64(0) << qint64(30000) << false << int(GateAction::Refuse);
+    QTest::newRow("overrun, bulk") << qint64(0) << qint64(30000) << true << int(GateAction::Hold);
+    QTest::newRow("overrun ending") << qint64(0) << qint64(5000) << false << int(GateAction::Hold);
+    QTest::newRow("short 429 and overrun, bulk") << qint64(5000) << qint64(30000) << true << int(GateAction::Hold);
+    QTest::newRow("long 429 and overrun, bulk") << qint64(30000) << qint64(60000) << true << int(GateAction::Refuse);
+}
+
+void TestApiPolicy::bulkWaitsThroughOverrunBlock()
+{
+    QFETCH(qint64, rateLimitMs);
+    QFETCH(qint64, overrunMs);
+    QFETCH(bool, bulk);
+    QFETCH(int, action);
+    QCOMPARE(int(gateAction(rateLimitMs, overrunMs, bulk)), action);
+}
+
+void TestApiPolicy::loadFailureNamesWhat()
+{
+    QCOMPARE(loadFailureMessage(u"Liked Songs"_s, u"Spotify: rate limited, try again in 5 min"_s),
+             u"Spotify: couldn't load Liked Songs: rate limited, try again in 5 min"_s);
+    QVERIFY(!isRateLimitMessage(loadFailureMessage(u"links"_s, u"Spotify: rate limited, try again in 30 s"_s)));
+    QCOMPARE(loadFailureMessage(u"links"_s, u"Spotify: network error: no response"_s), u"Spotify: network error: no response"_s);
 }
 
 void TestApiPolicy::noActiveDevice()

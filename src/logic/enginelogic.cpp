@@ -54,6 +54,8 @@ void EngineLogic::play()
     // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
     m_cancelledPause = m_pendingPause;
     m_pendingPause = false;
+    // a seek within the previous track is moot
+    m_pendingSeekMs = -1;
     const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
     m_stoppedId.clear();
     if(m_current.isEmpty())
@@ -105,6 +107,18 @@ void EngineLogic::seek(qint64 positionMs)
     m_progressMs = positionMs;
     m_progressAt = m_clock();
     m_commandAt = m_clock();
+    m_pendingSeekMs = positionMs;
+    m_seekAt = m_clock();
+}
+
+void EngineLogic::flushSeek()
+{
+    if(m_pendingSeekMs < 0 || m_clock() - m_seekAt < kSeekDebounceMs)
+        return;
+    const qint64 positionMs = m_pendingSeekMs;
+    m_pendingSeekMs = -1;
+    // polls from before the seek reached the device show the old position
+    m_commandAt = m_clock();
     m_sink->apiSeek(positionMs);
 }
 
@@ -120,6 +134,7 @@ void EngineLogic::stop()
     m_stoppedId = m_current.id;
     m_activeGeneration = 0;
     m_current = Entry();
+    m_pendingSeekMs = -1;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_awaiting = false;
@@ -280,6 +295,7 @@ void EngineLogic::fail(const QString &message, bool systemic)
     m_pendingPause = m_cancelledPause;
     m_cancelledPause = false;
     m_current = Entry();
+    m_pendingSeekMs = -1;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_awaiting = false;
@@ -294,6 +310,7 @@ void EngineLogic::switchToNext(bool startNow)
     m_sink->reportFinished();
     m_sink->reportState(EngineState::Stopped);
     m_current = m_next;
+    m_pendingSeekMs = -1;
     m_next = Entry();
     m_nextQueue = Queue::NotSent;
     m_trackReported = false;
@@ -326,6 +343,7 @@ void EngineLogic::finish()
         m_sink->suppressFollow(m_last.track.id);
     }
     m_current = Entry();
+    m_pendingSeekMs = -1;
     m_awaiting = false;
     m_trackReported = false;
     m_sink->reportFinished();

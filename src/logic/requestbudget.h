@@ -4,29 +4,29 @@
 #include <deque>
 #include <QtGlobal>
 
-// A safety net against request loops: at most kMaxRequests Web API requests in any rolling
-// kWindowMs. Bulk requests (paged loads, link expansion) wait for a slot instead of failing,
-// and may hold at most kMaxBulkRequests of them, so polls and playback commands always have room.
+// Web API requests per rolling window: interactive ones (polls, playback, volume, dialogs) as a
+// safety net against request loops, bulk ones (paged loads, link expansion) as pacing
+const int kInteractiveBudget = 30;
+const int kBulkBudget = 20;
+
+// at most maxRequests requests in any rolling kWindowMs
 class RequestBudget
 {
 public:
-    static constexpr int kMaxRequests = 30;
-    static constexpr int kMaxBulkRequests = 20;
     static constexpr qint64 kWindowMs = 10000;
 
+    explicit RequestBudget(int maxRequests);
+
     // counts a request sent at nowMs (a monotonic clock); false: over the budget, it must not be sent
-    bool take(qint64 nowMs, bool bulk = false);
-    // how long until take() can succeed for this kind of request; 0: now
-    qint64 waitMs(qint64 nowMs, bool bulk) const;
+    bool take(qint64 nowMs);
+    // how long until take() can succeed; 0: now
+    qint64 waitMs(qint64 nowMs) const;
+    // requests take() would allow now
+    int available(qint64 nowMs) const;
 
 private:
-    struct Sent
-    {
-        qint64 at;
-        bool bulk;
-    };
-
-    std::deque<Sent> m_sent;
+    int m_max;
+    std::deque<qint64> m_sent;
 };
 
 #endif

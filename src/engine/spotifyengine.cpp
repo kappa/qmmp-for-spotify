@@ -43,6 +43,11 @@ SpotifyEngine::SpotifyEngine(QObject *parent)
     // precise timers never fire early; the margin absorbs millisecond rounding of the clock
     m_volumeTimer.setInterval(int(VolumeLogic::kDebounceMs) + 5);
     connect(&m_volumeTimer, &QTimer::timeout, this, [this] { m_volume.tick(); });
+    // a held seek key or a scrolled slider sends one seek, kSeekDebounceMs after the last step
+    m_seekTimer.setSingleShot(true);
+    m_seekTimer.setTimerType(Qt::PreciseTimer);
+    m_seekTimer.setInterval(int(EngineLogic::kSeekDebounceMs) + 5);
+    connect(&m_seekTimer, &QTimer::timeout, this, [this] { m_logic.flushSeek(); });
     m_ticker.setInterval(250);
     connect(&m_ticker, &QTimer::timeout, this, [this] {
         m_logic.tick();
@@ -78,6 +83,7 @@ void SpotifyEngine::seek(qint64 time)
 {
     m_client->poller()->userCommand();
     m_logic.seek(time);
+    m_seekTimer.start();
 }
 
 void SpotifyEngine::stop()
