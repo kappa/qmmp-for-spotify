@@ -145,7 +145,7 @@ progress, timestamp.
 | Not configured / not logged in | Menu actions and playback show "Spotify: log in in plugin settings". |
 | 401 | Refresh token, retry once. |
 | Refresh rejected (incl. 6-month refresh-token expiry) | Log out, notice "Spotify: please log in again". |
-| 429 | Block all Web API requests until `Retry-After` (missing → 30 s); ≤ 10 s is retried once, longer fails with one notice per block; poller waits for the block. |
+| 429 | Block all Web API requests until `Retry-After` (missing → 30 s, at most 24 h); during a block of ≤ 10 s requests wait for its end, during a longer one they fail with one notice per block; poller waits for the block. |
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
 | Network down | Poller backs off to 30 s; no error spam. |
@@ -234,17 +234,19 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   playback, the next track after a finish), that pause comes back, so when qmmp stops the
   previous track does not keep playing on the device.
 - Rate-limit gate: any 429 blocks all Web API requests until now + `Retry-After` (missing or
-  unparseable → 30 s; a block is extended, never shortened). The block is kept in
-  `ratelimit` next to the token file, so a restart does not hit a locked account. While
-  blocked, requests are not sent: they fail on the next event-loop turn with HTTP 429 and
-  "Spotify: rate limited, try again in N min" (N s under a minute). A block of at most 10 s is
-  waited out and the request retried once. The first long 429 shows a notice; further
+  unparseable → 30 s; a block is extended, never shortened, but lasts at most 24 h). The block
+  is kept in `ratelimit` next to the token file, so a restart does not hit a locked account
+  (a stored block is capped at 24 h too); logging out clears it. While the remaining block is
+  at most 10 s, requests are held and sent when it ends (through the gate again); the request
+  that got the 429 is retried once. During a longer block requests are not sent: they fail on
+  the next event-loop turn with HTTP 429 and "Spotify: rate limited, try again in N min"
+  (N s under a minute). The first long 429 shows a notice; further
   rate-limit notices are suppressed until the block ends. The poller does not count blocked
   polls as failures and polls again 1 s after the block. Token refreshes are not gated.
 - Request log: every Web API request and token request appends one tab-separated line to
   `api.log` next to the token file (`<qmmp config dir>/spotify/api.log`, the CLI its own
   dir): local time with ms, verb, path and query, HTTP status (0 = network error), duration
-  in ms, note (`retry`, `retry-after=<s>`, `blocked` for a locally refused request, or the
-  network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
+  in ms, note (`retry`, `retry-after=<s>` with the seconds applied, `blocked` for a locally refused
+  request, or the network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
   5 MB. Each line is also sent to the `spotify.api` logging category (off by default;
   `QT_LOGGING_RULES="spotify.api=true"`).

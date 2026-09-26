@@ -22,7 +22,7 @@ void TestApiLog::notes()
 {
     QCOMPARE(apiLogNote(200, QByteArray(), false, QString()), QString());
     QCOMPARE(apiLogNote(429, " 309 ", false, QString()), u"retry-after=309"_s);
-    QCOMPARE(apiLogNote(429, QByteArray(), true, QString()), u"retry retry-after="_s);
+    QCOMPARE(apiLogNote(429, QByteArray(), true, QString()), u"retry retry-after=30"_s);
     QCOMPARE(apiLogNote(204, QByteArray(), true, QString()), u"retry"_s);
     QCOMPARE(apiLogNote(0, QByteArray(), false, u"Host not found"_s), u"Host not found"_s);
 }

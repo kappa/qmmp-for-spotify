@@ -1,5 +1,6 @@
 #include <QStringList>
 #include "apilog.h"
+#include "apipolicy.h"
 
 using namespace Qt::StringLiterals;
 
@@ -16,7 +17,7 @@ QString apiLogNote(int status, const QByteArray &retryAfter, bool retried, const
     if(retried)
         notes << u"retry"_s;
     if(status == 429)
-        notes << u"retry-after="_s + QString::fromLatin1(retryAfter.trimmed());
+        notes << u"retry-after="_s + QString::number(parseRetryAfterSeconds(retryAfter));
     if(status == 0)
         notes << networkError;
     return notes.join(u' ');

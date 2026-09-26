@@ -50,6 +50,8 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
     });
     connect(m_auth, &SpotifyAuth::loggedOut, this, [this](const QString &reason) {
         m_poller->setEnabled(false);
+        // SpotifyApi drops its block on logout
+        m_rateLimitNoticeUntil = 0;
         notify(reason);
     });
     connect(m_auth, &SpotifyAuth::loginFailed, this, [this](const QString &message) { notify(message); });

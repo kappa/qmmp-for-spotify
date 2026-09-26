@@ -61,8 +61,10 @@ signals:
 
 private:
     void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false);
-    bool refuseWhileBlocked(const QByteArray &verb, const QUrl &url, const Callback &callback);
+    // true when the request was held or refused instead of sent
+    bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried);
     void blockFor(int retryAfterSeconds);
+    void clearBlock();
     template <typename T>
     void collect(const QUrl &url, std::function<SpotifyPage<T>(const QByteArray &)> parse, QList<T> items,
                  ListCallback<T> callback, int pages = 0);

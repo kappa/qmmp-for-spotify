@@ -64,7 +64,8 @@ SpotifyApi::SpotifyApi(SpotifyAuth *auth, QObject *parent)
     // a past, missing or unreadable block leaves requests open
     QFile file(m_dataDir + u"/ratelimit"_s);
     if(file.open(QIODevice::ReadOnly))
-        m_blockedUntil = file.readAll().trimmed().toLongLong();
+        m_blockedUntil = capBlock(file.readAll().trimmed().toLongLong(), now());
+    connect(auth, &SpotifyAuth::loggedOut, this, &SpotifyApi::clearBlock);
 }
 
 bool SpotifyApi::isBlocked() const
@@ -72,18 +73,35 @@ bool SpotifyApi::isBlocked() const
     return ::isBlocked(m_blockedUntil, now());
 }
 
-// the callback runs on the next event-loop turn: callers may be in the middle of a state change
-bool SpotifyApi::refuseWhileBlocked(const QByteArray &verb, const QUrl &url, const Callback &callback)
+// a short block holds the request until it ends, then it passes the gate again; during a long
+// one the callback runs on the next event-loop turn: callers may be in the middle of a state change
+bool SpotifyApi::gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback,
+                      bool retried)
 {
-    if(!isBlocked())
+    switch(gateAction(m_blockedUntil, now()))
+    {
+    case GateAction::Send:
         return false;
-    logApiRequest(m_dataDir, verb, pathQuery(url), 429, 0, u"blocked"_s);
+    case GateAction::Hold:
+        QTimer::singleShot(int(m_blockedUntil - now()) + kRetryMarginMs, Qt::PreciseTimer, this,
+                           [=] { request(verb, url, body, callback, retried); });
+        return true;
+    case GateAction::Refuse:
+        break;
+    }
+    logApiRequest(m_dataDir, verb, pathQuery(url), 429, 0, retried ? u"retry blocked"_s : u"blocked"_s);
     ApiResult result;
     result.status = 429;
     result.rateLimited = true;
     result.message = rateLimitMessage(m_blockedUntil - now());
     QTimer::singleShot(0, this, [callback, result] { callback(result); });
     return true;
+}
+
+void SpotifyApi::clearBlock()
+{
+    m_blockedUntil = 0;
+    QFile::remove(m_dataDir + u"/ratelimit"_s);
 }
 
 void SpotifyApi::blockFor(int retryAfterSeconds)
@@ -105,7 +123,7 @@ void SpotifyApi::blockFor(int retryAfterSeconds)
 
 void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried)
 {
-    if(refuseWhileBlocked(verb, url, callback))
+    if(gate(verb, url, body, callback, retried))
         return;
     m_auth->withToken([=](bool ok) {
         if(!ok)
@@ -116,7 +134,7 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
             return;
         }
         // a 429 may have arrived while the token was being refreshed
-        if(refuseWhileBlocked(verb, url, callback))
+        if(gate(verb, url, body, callback, retried))
             return;
         QNetworkRequest networkRequest(url);
         networkRequest.setRawHeader("Authorization", "Bearer " + m_auth->accessToken().toUtf8());

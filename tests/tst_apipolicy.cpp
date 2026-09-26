@@ -14,6 +14,8 @@ private slots:
     void retryAfterParsing_data();
     void retryAfterParsing();
     void blockExtendsNeverShortens();
+    void blockIsCappedAt24Hours();
+    void shortBlockHoldsLongBlockRefuses();
     void rateLimitMessages();
     void rateLimitDecisionUsesWholeBlock();
     void noActiveDevice();
@@ -92,6 +94,23 @@ void TestApiPolicy::blockExtendsNeverShortens()
     QVERIFY(isBlocked(blocked, 1299999));
     QVERIFY(!isBlocked(blocked, 1300000));
     QVERIFY(!isBlocked(0, 1000000));
+}
+
+void TestApiPolicy::blockIsCappedAt24Hours()
+{
+    const qint64 day = 24 * 3600 * 1000;
+    QCOMPARE(extendBlock(0, 1000, std::numeric_limits<int>::max()), 1000 + day);
+    QCOMPARE(capBlock(Q_INT64_C(1) << 60, 1000), 1000 + day);
+    QCOMPARE(capBlock(5000, 1000), 5000);
+    QCOMPARE(capBlock(0, 1000), 0);
+}
+
+void TestApiPolicy::shortBlockHoldsLongBlockRefuses()
+{
+    QCOMPARE(gateAction(0, 1000), GateAction::Send);
+    QCOMPARE(gateAction(1000, 1000), GateAction::Send);
+    QCOMPARE(gateAction(11000, 1000), GateAction::Hold);
+    QCOMPARE(gateAction(11001, 1000), GateAction::Refuse);
 }
 
 void TestApiPolicy::rateLimitMessages()

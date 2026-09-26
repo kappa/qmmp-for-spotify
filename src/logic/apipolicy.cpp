@@ -9,6 +9,7 @@ namespace {
 
 const int kMaxRetryAfterSeconds = 10;
 const int kDefaultRetryAfterSeconds = 30;
+const qint64 kMaxBlockMs = 24 * 3600 * 1000;
 
 }
 
@@ -21,12 +22,24 @@ int parseRetryAfterSeconds(const QByteArray &header)
 
 qint64 extendBlock(qint64 blockedUntilMs, qint64 nowMs, int retryAfterSeconds)
 {
-    return qMax(blockedUntilMs, nowMs + qint64(retryAfterSeconds) * 1000);
+    return capBlock(qMax(blockedUntilMs, nowMs + qint64(retryAfterSeconds) * 1000), nowMs);
+}
+
+qint64 capBlock(qint64 blockedUntilMs, qint64 nowMs)
+{
+    return qMin(blockedUntilMs, nowMs + kMaxBlockMs);
 }
 
 bool isBlocked(qint64 blockedUntilMs, qint64 nowMs)
 {
     return nowMs < blockedUntilMs;
+}
+
+GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs)
+{
+    if(!isBlocked(blockedUntilMs, nowMs))
+        return GateAction::Send;
+    return blockedUntilMs - nowMs <= kMaxRetryAfterSeconds * 1000 ? GateAction::Hold : GateAction::Refuse;
 }
 
 QString rateLimitMessage(qint64 remainingMs)
@@ -110,4 +123,3 @@ bool isSystemicPlayFailure(int httpStatus, bool deviceProblem, const QString &re
     return httpStatus == 0 || httpStatus == 401 || httpStatus == 429 || httpStatus >= 500 || deviceProblem
            || reason == "PREMIUM_REQUIRED"_L1;
 }
-
