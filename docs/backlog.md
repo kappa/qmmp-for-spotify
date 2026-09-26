@@ -93,3 +93,21 @@ appears. Superseded by "No device selection" if that lands first.
 After Log out, qmmp keeps Playing with the position running (device keeps playing); Stop
 then shows "not logged in". Logging out should stop qmmp's engine quietly (and maybe say
 the device keeps playing).
+
+### Next then Previous before a poll leaves qmmp and the device apart
+Found by the B9 round-3 re-review (older bug, easier to hit with rapid Next/Previous).
+`EngineLogic::play()` has a shortcut that trusts the last poll even when it is stale: A
+plays, Next sends B, Previous before any poll → qmmp shows A and sends nothing while the
+device plays B, until A's predicted end.
+
+### A poll can end the wait while a coalesced start is still pending
+B9 round-3 re-review, Minor 1. If a skip-to-queued is pending and the device reaches that
+track by itself, the pending skip is still sent and jumps past it (qmmp shows one track,
+the device plays another). Needs the track to end within 1 s of the start; rare. Fix: drop
+a pending skip in `apply()`, or don't let a poll end the wait while a start is pending.
+
+### Start coalescing resets with each engine
+B9 round-3 re-review, Minor 2. qmmp deletes the Spotify engine when switching to a local
+file, so a held Next over a playlist alternating Spotify and local items isn't throttled
+and can trip the 60 s block (then Next stops qmmp). Fix: keep the last-start time on
+`SpotifyClient`.
