@@ -88,16 +88,22 @@ plugin install location). The distro's older qmmp is not a target.
   it counts as visible):
   - visible, and the engine is active or the selected device is playing: every 2 s;
   - otherwise (visible idle, or hidden): every 60 s; while the engine waits for the device
-    to start a track (its start timeout needs polls): every 2 s;
+    to start a track (its start timeout needs polls): every 2 s, for at most 20 s;
   - hidden with the selected device playing: an extra poll 5 s before the predicted track
     end (poll time + duration − progress, from every successful poll), so the engine's
-    queue step 1.5 s before the end acts on fresh state;
+    queue step 1.5 s before the end acts on fresh state; if that poll is less than 2 s away
+    it counts as inside the last 5 s (a stalled progress must not repeat it at once);
   - a successful poll with no playback (204) stops polling unless the engine is active;
   - failed polls retry after 2, 4, … 256 s; the 9th failure in a row stops polling with
     one notice "Spotify: lost connection, polling stopped";
   - stopped polling resumes on interaction: a main window shown, qmmp focused or a Spotify
-    dialog opened (at most one poll per 5 s: dropped if a poll was sent less than 5 s ago),
-    or a playback command (`pollSoon()`, not throttled), with a fresh retry sequence.
+    dialog opened, at most one poll per 5 s after the last one was sent (inside that window
+    a trigger only brings a later poll forward to the current schedule, or, when polling had
+    stopped, polls when the window ends). Commands poll soon (`pollSoon()`, not throttled);
+    one arriving while a poll is in flight polls again after it. A 204-stop resumes on any
+    of these; a hard fail only on interaction or a user playback command (play, pause,
+    seek, device choice), with a fresh retry sequence — automatic engine requests (queueing,
+    track ends) do not restart it.
   Pauses while logged out. While requests are rate-limit blocked, the next poll is
   scheduled 1 s after the block ends (`pollSoon()` does not shorten that); blocked polls
   are not failures.

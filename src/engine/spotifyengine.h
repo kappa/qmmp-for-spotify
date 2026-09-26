@@ -41,6 +41,7 @@ private:
     void reportVolumeUnsupported() override;
 
     SpotifyApi::Callback notifyOnFailure() const;
+    void armStartTimeout();
     void publishTracks();
     void scheduleVolumeSend();
 

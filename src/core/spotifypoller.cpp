@@ -17,6 +17,7 @@ void SpotifyPoller::setEnabled(bool enabled)
 {
     m_enabled = enabled;
     m_failures = 0;
+    m_pollAgain = false;
     if(enabled)
         pollSoon();
     else
@@ -25,6 +26,8 @@ void SpotifyPoller::setEnabled(bool enabled)
 
 void SpotifyPoller::setEngineActive(bool active, bool awaiting)
 {
+    if(awaiting && !m_engineAwaiting)
+        m_awaitingSince = QDateTime::currentMSecsSinceEpoch();
     m_engineAwaiting = awaiting;
     if(m_engineActive == active)
         return;
@@ -36,6 +39,7 @@ void SpotifyPoller::setEngineActive(bool active, bool awaiting)
 void SpotifyPoller::setSelectedDevice(const QString &deviceId)
 {
     m_device = deviceId;
+    userCommand();
     pollSoon();
 }
 
@@ -50,30 +54,46 @@ void SpotifyPoller::setVisible(bool visible)
 
 void SpotifyPoller::pollSoon()
 {
-    if(!m_enabled || m_inFlight)
+    // automatic requests (queue replies, track ends) do not restart a lost connection
+    if(!m_enabled || isPollHardFail(m_failures))
         return;
-    // after a hard fail polling resumes with a fresh retry sequence
-    if(isPollHardFail(m_failures))
-        m_failures = 0;
+    if(m_inFlight)
+    {
+        // the reply in flight may predate the command
+        m_pollAgain = true;
+        return;
+    }
     // while rate limited the next poll stays at the end of the block
     if(m_api->isBlocked())
         scheduleNext();
     else
-        m_timer.start(300);
+        m_timer.start(kPollSoonMs);
+}
+
+void SpotifyPoller::userCommand()
+{
+    // a fresh retry sequence
+    if(isPollHardFail(m_failures))
+        m_failures = 0;
 }
 
 void SpotifyPoller::pollOnInteraction()
 {
-    if(interactionPolls(m_lastPollAt, QDateTime::currentMSecsSinceEpoch()))
+    if(!m_enabled)
+        return;
+    userCommand();
+    // the reply in flight is fresh
+    if(m_inFlight)
+        return;
+    if(m_api->isBlocked())
     {
-        pollSoon();
+        if(!m_timer.isActive())
+            scheduleNext();
         return;
     }
-    // the state is fresh, but a window that became visible may need a sooner poll
-    if(!m_enabled || m_inFlight || !m_timer.isActive() || m_api->isBlocked())
-        return;
-    const int delay = nextDelayMs();
-    if(delay != kStopPolling && delay < m_timer.remainingTime())
+    const int delay = interactionDelayMs(m_lastPollAt, QDateTime::currentMSecsSinceEpoch(),
+                                         m_timer.isActive() ? m_timer.remainingTime() : -1, nextDelayMs());
+    if(delay != kKeepTimer)
         m_timer.start(delay);
 }
 
@@ -99,6 +119,11 @@ void SpotifyPoller::poll()
         else if(!result.rateLimited)
             self->m_failures++;
         self->scheduleNext();
+        if(self->m_pollAgain)
+        {
+            self->m_pollAgain = false;
+            self->pollSoon();
+        }
     });
 }
 
@@ -128,6 +153,7 @@ int SpotifyPoller::nextDelayMs() const
     in.visible = m_visible;
     in.engineActive = m_engineActive;
     in.engineAwaiting = m_engineAwaiting;
+    in.awaitingSinceMs = m_awaitingSince;
     in.selectedPlaying = m_last.hasPlayback && m_last.isPlaying && m_last.deviceId == m_device;
     in.hadPlayback = m_hadPlayback;
     in.failures = m_failures;

@@ -56,6 +56,11 @@ void TestPollPolicy::awaitingEnginePollsFast()
 {
     PollInputs in = inputs(false, true, false);
     in.engineAwaiting = true;
+    in.awaitingSinceMs = in.nowMs - 19999;
+    QCOMPARE(nextPollDelayMs(in), 2000);
+    in.awaitingSinceMs = in.nowMs - 20000;
+    QCOMPARE(nextPollDelayMs(in), 60000);
+    in.visible = true;
     QCOMPARE(nextPollDelayMs(in), 2000);
 }
 
@@ -65,6 +70,8 @@ void TestPollPolicy::hiddenPollsBeforeTrackEnd()
     QCOMPARE(nextPollDelayMs(hiddenPlaying(200000)), 60000);
     QCOMPARE(nextPollDelayMs(hiddenPlaying(5000)), 60000);
     QCOMPARE(nextPollDelayMs(hiddenPlaying(3000)), 60000);
+    QCOMPARE(nextPollDelayMs(hiddenPlaying(7000)), 2000);
+    QCOMPARE(nextPollDelayMs(hiddenPlaying(6999)), 60000);
 
     PollInputs visible = hiddenPlaying(30000);
     visible.visible = true;
@@ -127,10 +134,17 @@ void TestPollPolicy::errorsBackOffThenStop()
 
 void TestPollPolicy::interactionThrottle()
 {
-    QVERIFY(interactionPolls(0, 1000000));
-    QVERIFY(interactionPolls(995000, 1000000));
-    QVERIFY(!interactionPolls(995001, 1000000));
-    QVERIFY(!interactionPolls(1000000, 1000000));
+    QCOMPARE(interactionDelayMs(0, 1000000, 60000, 2000), kPollSoonMs);
+    QCOMPARE(interactionDelayMs(995000, 1000000, -1, kStopPolling), kPollSoonMs);
+    QCOMPARE(interactionDelayMs(995000, 1000000, 100, 2000), kKeepTimer);
+
+    QCOMPARE(interactionDelayMs(996000, 1000000, 58000, 2000), 2000);
+    QCOMPARE(interactionDelayMs(996000, 1000000, 1500, 2000), kKeepTimer);
+    QCOMPARE(interactionDelayMs(996000, 1000000, 58000, 60000), kKeepTimer);
+    QCOMPARE(interactionDelayMs(996000, 1000000, 58000, kStopPolling), kKeepTimer);
+
+    QCOMPARE(interactionDelayMs(996000, 1000000, -1, kStopPolling), 1000);
+    QCOMPARE(interactionDelayMs(1000000, 1000000, -1, kStopPolling), 5000);
 }
 
 void TestPollPolicy::waitsForRateLimitBlock()

@@ -67,6 +67,7 @@ bool SpotifyEngine::enqueue(InputSource *source)
 
 bool SpotifyEngine::play()
 {
+    m_client->poller()->userCommand();
     m_client->setSuppressedTrack(QString());
     m_logic.play();
     publishTracks();
@@ -75,6 +76,7 @@ bool SpotifyEngine::play()
 
 void SpotifyEngine::seek(qint64 time)
 {
+    m_client->poller()->userCommand();
     m_logic.seek(time);
 }
 
@@ -88,6 +90,7 @@ void SpotifyEngine::stop()
 
 void SpotifyEngine::pause()
 {
+    m_client->poller()->userCommand();
     m_logic.pause();
 }
 
@@ -104,11 +107,7 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
             self->publishTracks();
         }
     });
-    // precise timers never fire early; the margin absorbs millisecond rounding of the clock
-    QTimer::singleShot(EngineLogic::kStartTimeoutMs + 50, Qt::PreciseTimer, this, [this] {
-        m_logic.checkStartTimeout();
-        publishTracks();
-    });
+    armStartTimeout();
 }
 
 // captures only the client: after a hand-over to another engine this engine is deleted
@@ -161,6 +160,18 @@ void SpotifyEngine::apiNext()
                                      isSystemicPlayFailure(result.status, result.deviceProblem, result.reason));
             self->publishTracks();
         }
+    });
+    armStartTimeout();
+}
+
+// the device may land on something else than our track (a lost queue entry, Autoplay);
+// without the timeout qmmp would wait for it for good, polling every 2 s
+void SpotifyEngine::armStartTimeout()
+{
+    // precise timers never fire early; the margin absorbs millisecond rounding of the clock
+    QTimer::singleShot(EngineLogic::kStartTimeoutMs + 50, Qt::PreciseTimer, this, [this] {
+        m_logic.checkStartTimeout();
+        publishTracks();
     });
 }
 

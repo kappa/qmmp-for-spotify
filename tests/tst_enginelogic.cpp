@@ -103,6 +103,7 @@ private slots:
     void secondConsecutiveStartTimeoutStops();
     void startTimeoutAfterSuccessfulStartSkips();
     void failedSkipToQueuedTrackStops();
+    void skipToQueuedTrackTimesOut();
     void failureAfterStartSendsNoStalePause();
     void startTimeoutIgnoredOnceStarted();
 
@@ -682,6 +683,25 @@ void TestEngineLogic::failedSkipToQueuedTrackStops()
     m_logic->playFailed(m_logic->activeGeneration(), u"gone"_s, false);
     QCOMPARE(m_sink.calls.last(), u"fatal"_s);
     QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+// the device skipped, but not to our track (lost queue entry, Autoplay): qmmp must not wait for good
+void TestEngineLogic::skipToQueuedTrackTimesOut()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->tick();
+    m_now += 500;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_sink.calls.last(), u"next"_s);
+    m_logic->updateState(deviceState(u"dev"_s, u"x"_s, 300));
+    QVERIFY(m_logic->isAwaitingStart());
+    m_sink.calls.clear();
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    QCOMPARE(m_sink.calls, QStringList { u"error"_s });
+    QVERIFY(!m_logic->isAwaitingStart());
 }
 
 void TestEngineLogic::failureAfterStartSendsNoStalePause()

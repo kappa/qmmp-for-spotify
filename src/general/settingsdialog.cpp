@@ -15,8 +15,8 @@
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(tr("Spotify Plugin Settings"));
-    SpotifyClient::instance()->poller()->pollOnInteraction();
     SpotifyClient *client = SpotifyClient::instance();
+    client->poller()->pollOnInteraction();
 
     m_clientId = new QLineEdit(client->clientId(), this);
     m_port = new QSpinBox(this);
