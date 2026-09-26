@@ -18,6 +18,7 @@ private slots:
     void shortBlockHoldsLongBlockRefuses();
     void rateLimitMessages();
     void rateLimitDecisionUsesWholeBlock();
+    void budgetOverrunBlocksOneMinute();
     void noActiveDevice();
     void passesSpotifyMessage();
     void volumeControlDisallowed();
@@ -133,6 +134,13 @@ void TestApiPolicy::rateLimitDecisionUsesWholeBlock()
     QVERIFY(longWait.rateLimited);
     QCOMPARE(longWait.message, u"Spotify: rate limited, try again in 11 s"_s);
     QCOMPARE(rateLimitDecision(2000, true).action, ApiDecision::Fail);
+}
+
+void TestApiPolicy::budgetOverrunBlocksOneMinute()
+{
+    QCOMPARE(budgetOverrunBlock(0, 1000000), 1060000);
+    QCOMPARE(budgetOverrunBlock(2000000, 1000000), 2000000);
+    QCOMPARE(budgetExceededMessage(), u"Spotify: too many requests, pausing for 1 min"_s);
 }
 
 void TestApiPolicy::noActiveDevice()

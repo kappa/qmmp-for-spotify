@@ -27,28 +27,59 @@ int retryDelayMs(int failures)
 
 }
 
-int nextPollDelayMs(const PollInputs &in)
+PollPlan planNextPoll(const PollInputs &in)
 {
+    PollPlan plan;
     if(isPollHardFail(in.failures))
-        return kStopPolling;
+        return plan;
     if(in.failures > 0)
-        return retryDelayMs(in.failures);
+    {
+        plan.delayMs = retryDelayMs(in.failures);
+        return plan;
+    }
     // the engine polls through a 204: a device that has not started yet reports none
     if(!in.hadPlayback && !in.engineActive)
-        return kStopPolling;
+        return plan;
     if(in.engineAwaiting && in.nowMs - in.awaitingSinceMs < kAwaitingFastMs)
-        return kActiveMs;
-    const int interval = in.focused && in.selectedPlaying ? kPlayingMs : kIdleMs;
-    if(!in.selectedPlaying || in.predictedEndMs <= 0)
-        return interval;
-    // a track-end poll nearer than 2 s is skipped: a stalled progress would repeat it at once
-    for(const qint64 at : { in.predictedEndMs - kBeforeEndMs, in.predictedEndMs + kAfterEndMs })
     {
-        const qint64 delay = at - in.nowMs;
-        if(delay >= kActiveMs)
-            return int(qMin<qint64>(delay, interval));
+        plan.delayMs = kActiveMs;
+        return plan;
     }
-    return interval;
+    plan.delayMs = in.focused && in.selectedPlaying ? kPlayingMs : kIdleMs;
+    if(!in.selectedPlaying || in.predictedEndMs <= 0)
+        return plan;
+    // each fires once per track, and one nearer than 2 s is skipped: a stalled progress
+    // would repeat it
+    const struct { qint64 at; bool done; PollKind kind; } ends[] = {
+        { in.predictedEndMs - kBeforeEndMs, in.beforeEndPolled, PollKind::BeforeEnd },
+        { in.predictedEndMs + kAfterEndMs, in.afterEndPolled, PollKind::AfterEnd },
+    };
+    for(const auto &end : ends)
+    {
+        const qint64 delay = end.at - in.nowMs;
+        if(end.done || delay < kActiveMs)
+            continue;
+        if(delay < plan.delayMs)
+        {
+            plan.delayMs = int(delay);
+            plan.kind = end.kind;
+        }
+        break;
+    }
+    return plan;
+}
+
+int nextPollDelayMs(const PollInputs &in)
+{
+    return planNextPoll(in).delayMs;
+}
+
+bool startsTrackEndCycle(const QString &trackId, qint64 progressMs, const PlayerState &state)
+{
+    if(!state.hasPlayback)
+        return false;
+    // small backward steps are jitter between polls, not a restart
+    return state.track.id != trackId || state.progressMs < progressMs - kActiveMs;
 }
 
 bool isPollHardFail(int failures)

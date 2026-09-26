@@ -10,6 +10,7 @@ namespace {
 const int kMaxRetryAfterSeconds = 10;
 const int kDefaultRetryAfterSeconds = 30;
 const qint64 kMaxBlockMs = 24 * 3600 * 1000;
+const int kBudgetOverrunBlockSeconds = 60;
 
 }
 
@@ -57,7 +58,12 @@ bool isRateLimitMessage(const QString &message)
 
 QString budgetExceededMessage()
 {
-    return u"Spotify: too many requests, holding back"_s;
+    return u"Spotify: too many requests, pausing for 1 min"_s;
+}
+
+qint64 budgetOverrunBlock(qint64 blockedUntilMs, qint64 nowMs)
+{
+    return extendBlock(blockedUntilMs, nowMs, kBudgetOverrunBlockSeconds);
 }
 
 ApiDecision rateLimitDecision(qint64 waitMs, bool retried)

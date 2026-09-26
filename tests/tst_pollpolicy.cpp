@@ -2,6 +2,8 @@
 #include "pollpolicy.h"
 #include "spotifytypes.h"
 
+using namespace Qt::StringLiterals;
+
 namespace {
 
 PollInputs inputs(bool focused, bool engineActive, bool selectedPlaying)
@@ -33,6 +35,9 @@ private slots:
     void pollsAroundTrackEnd_data();
     void pollsAroundTrackEnd();
     void pausedTrackHasNoTrackEndPolls();
+    void trackEndPollsFireOncePerTrack_data();
+    void trackEndPollsFireOncePerTrack();
+    void trackEndCycle();
     void predictedEndFromPoll();
     void noPlaybackStopsUnlessEngineActive();
     void errorsBackOffThenStop();
@@ -106,6 +111,59 @@ void TestPollPolicy::pausedTrackHasNoTrackEndPolls()
     QCOMPARE(nextPollDelayMs(paused), 60000);
     paused.focused = false;
     QCOMPARE(nextPollDelayMs(paused), 60000);
+}
+
+void TestPollPolicy::trackEndPollsFireOncePerTrack_data()
+{
+    QTest::addColumn<bool>("focused");
+    QTest::addColumn<qint64>("msToEnd");
+    QTest::addColumn<bool>("beforeDone");
+    QTest::addColumn<bool>("afterDone");
+    QTest::addColumn<int>("delay");
+    QTest::addColumn<int>("kind");
+
+    QTest::newRow("before end due") << false << qint64(7000) << false << false << 2000 << int(PollKind::BeforeEnd);
+    QTest::newRow("before end done") << false << qint64(7000) << true << false << 8500 << int(PollKind::AfterEnd);
+    QTest::newRow("after end due") << false << qint64(1000) << true << false << 2500 << int(PollKind::AfterEnd);
+    QTest::newRow("both done") << false << qint64(7000) << true << true << 60000 << int(PollKind::Regular);
+    QTest::newRow("after end done, frozen") << false << qint64(1000) << true << true << 60000 << int(PollKind::Regular);
+    QTest::newRow("focused, before end due") << true << qint64(8000) << false << false << 3000 << int(PollKind::BeforeEnd);
+    QTest::newRow("focused, before end done") << true << qint64(8000) << true << false << 5000 << int(PollKind::Regular);
+    QTest::newRow("focused, after end due") << true << qint64(1000) << true << false << 2500 << int(PollKind::AfterEnd);
+    QTest::newRow("focused, both done") << true << qint64(1000) << true << true << 5000 << int(PollKind::Regular);
+    QTest::newRow("interval sooner") << false << qint64(200000) << false << false << 60000 << int(PollKind::Regular);
+}
+
+void TestPollPolicy::trackEndPollsFireOncePerTrack()
+{
+    QFETCH(bool, focused);
+    QFETCH(qint64, msToEnd);
+    QFETCH(bool, beforeDone);
+    QFETCH(bool, afterDone);
+    QFETCH(int, delay);
+    QFETCH(int, kind);
+    PollInputs in = playing(focused, msToEnd);
+    in.beforeEndPolled = beforeDone;
+    in.afterEndPolled = afterDone;
+    const PollPlan plan = planNextPoll(in);
+    QCOMPARE(plan.delayMs, delay);
+    QCOMPARE(int(plan.kind), kind);
+}
+
+void TestPollPolicy::trackEndCycle()
+{
+    PlayerState state;
+    state.hasPlayback = true;
+    state.isPlaying = true;
+    state.track.id = u"a"_s;
+    state.progressMs = 60000;
+    QVERIFY(!startsTrackEndCycle(u"a"_s, 50000, state));
+    QVERIFY(!startsTrackEndCycle(u"a"_s, 60000, state));
+    QVERIFY(!startsTrackEndCycle(u"a"_s, 61500, state));
+    QVERIFY(startsTrackEndCycle(u"a"_s, 190000, state));
+    QVERIFY(startsTrackEndCycle(u"b"_s, 50000, state));
+    QVERIFY(startsTrackEndCycle(QString(), 0, state));
+    QVERIFY(!startsTrackEndCycle(u"a"_s, 50000, PlayerState()));
 }
 
 void TestPollPolicy::predictedEndFromPoll()

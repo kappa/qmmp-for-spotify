@@ -1,7 +1,7 @@
 #ifndef POLLPOLICY_H
 #define POLLPOLICY_H
 
-#include <QtGlobal>
+#include <QString>
 
 struct PlayerState;
 
@@ -23,6 +23,9 @@ struct PollInputs
     int failures = 0;
     // when the playing track ends, from the last successful poll; 0 = unknown
     qint64 predictedEndMs = 0;
+    // the track-end polls already made for the playing track: each fires at most once
+    bool beforeEndPolled = false;
+    bool afterEndPolled = false;
     qint64 nowMs = 0;
 };
 
@@ -33,8 +36,21 @@ const int kPollSoonMs = 300;
 // failed polls retried (2 s … 256 s) before polling stops
 const int kMaxPollRetries = 8;
 
-// the delay until the next poll, or kStopPolling: nothing to watch, or the connection is lost
+enum class PollKind { Regular, BeforeEnd, AfterEnd };
+
+struct PollPlan
+{
+    int delayMs = kStopPolling;
+    PollKind kind = PollKind::Regular;
+};
+
+// the next poll: a delay (or kStopPolling: nothing to watch, or the connection is lost), and
+// whether it is one of the playing track's track-end polls
+PollPlan planNextPoll(const PollInputs &inputs);
 int nextPollDelayMs(const PollInputs &inputs);
+// a successful poll shows another track, or the same one restarted or sought back: its
+// track-end polls are due again
+bool startsTrackEndCycle(const QString &trackId, qint64 progressMs, const PlayerState &state);
 bool isPollHardFail(int failures);
 // how an automatic poll request (a command's reply, the engine becoming active) re-arms the
 // poll timer (remainingMs < 0: no timer), or kKeepTimer: soon, but never ahead of the error

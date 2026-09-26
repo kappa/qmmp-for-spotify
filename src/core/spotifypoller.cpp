@@ -72,7 +72,7 @@ void SpotifyPoller::pollSoon()
     // failing commands (a queue call while offline) must not shorten the backoff
     const int delay = pollSoonDelayMs(m_failures, m_timer.isActive() ? m_timer.remainingTime() : -1);
     if(delay != kKeepTimer)
-        m_timer.start(delay);
+        arm(delay);
 }
 
 void SpotifyPoller::userCommand()
@@ -105,10 +105,12 @@ void SpotifyPoller::pollEarly()
             scheduleNext();
         return;
     }
+    const PollPlan next = plan();
     const int delay = interactionDelayMs(m_lastPollAt, QDateTime::currentMSecsSinceEpoch(),
-                                         m_timer.isActive() ? m_timer.remainingTime() : -1, nextDelayMs());
+                                         m_timer.isActive() ? m_timer.remainingTime() : -1, next.delayMs);
+    // brought forward to the policy's poll, which may be a track-end one
     if(delay != kKeepTimer)
-        m_timer.start(delay);
+        arm(delay, delay == next.delayMs ? next.kind : PollKind::Regular);
 }
 
 void SpotifyPoller::poll()
@@ -117,6 +119,11 @@ void SpotifyPoller::poll()
         return;
     m_inFlight = true;
     m_lastPollAt = QDateTime::currentMSecsSinceEpoch();
+    if(m_armedKind == PollKind::BeforeEnd)
+        m_beforeEndPolled = true;
+    else if(m_armedKind == PollKind::AfterEnd)
+        m_afterEndPolled = true;
+    m_armedKind = PollKind::Regular;
     QPointer<SpotifyPoller> self(this);
     m_api->playerState([self](const ApiResult &result, const PlayerState &state) {
         if(!self)
@@ -128,6 +135,16 @@ void SpotifyPoller::poll()
             self->m_last = state;
             self->m_hadPlayback = state.hasPlayback;
             self->m_predictedEnd = predictedTrackEndMs(state, QDateTime::currentMSecsSinceEpoch());
+            if(startsTrackEndCycle(self->m_endTrack, self->m_endProgress, state))
+            {
+                self->m_beforeEndPolled = false;
+                self->m_afterEndPolled = false;
+            }
+            if(state.hasPlayback)
+            {
+                self->m_endTrack = state.track.id;
+                self->m_endProgress = state.progressMs;
+            }
             emit self->stateChanged(state);
         }
         // held back locally: nothing is wrong with the connection
@@ -148,13 +165,13 @@ void SpotifyPoller::scheduleNext()
         return;
     if(m_api->isBlocked())
     {
-        m_timer.start(rateLimitedPollDelayMs(m_api->blockedUntil(), QDateTime::currentMSecsSinceEpoch()));
+        arm(rateLimitedPollDelayMs(m_api->blockedUntil(), QDateTime::currentMSecsSinceEpoch()));
         return;
     }
-    const int delay = nextDelayMs();
-    if(delay != kStopPolling)
+    const PollPlan next = plan();
+    if(next.delayMs != kStopPolling)
     {
-        m_timer.start(delay);
+        arm(next.delayMs, next.kind);
         return;
     }
     m_timer.stop();
@@ -162,7 +179,13 @@ void SpotifyPoller::scheduleNext()
         emit connectionLost();
 }
 
-int SpotifyPoller::nextDelayMs() const
+void SpotifyPoller::arm(int delayMs, PollKind kind)
+{
+    m_armedKind = kind;
+    m_timer.start(delayMs);
+}
+
+PollPlan SpotifyPoller::plan() const
 {
     PollInputs in;
     in.focused = m_focused;
@@ -173,6 +196,8 @@ int SpotifyPoller::nextDelayMs() const
     in.hadPlayback = m_hadPlayback;
     in.failures = m_failures;
     in.predictedEndMs = m_predictedEnd;
+    in.beforeEndPolled = m_beforeEndPolled;
+    in.afterEndPolled = m_afterEndPolled;
     in.nowMs = QDateTime::currentMSecsSinceEpoch();
-    return nextPollDelayMs(in);
+    return planNextPoll(in);
 }

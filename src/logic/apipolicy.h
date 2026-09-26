@@ -28,8 +28,10 @@ enum class GateAction { Send, Hold, Refuse };
 GateAction gateAction(qint64 blockedUntilMs, qint64 nowMs);
 QString rateLimitMessage(qint64 remainingMs);
 bool isRateLimitMessage(const QString &message);
-// a request not sent because too many were sent in a short time
+// a request not sent because too many were sent in a short time: something loops
 QString budgetExceededMessage();
+// the local block a budget overrun imposes through the rate-limit gate (1 min, never shortening)
+qint64 budgetOverrunBlock(qint64 blockedUntilMs, qint64 nowMs);
 // a short wait is retried once automatically; a long one fails at once
 ApiDecision rateLimitDecision(qint64 waitMs, bool retried);
 

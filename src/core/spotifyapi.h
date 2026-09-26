@@ -2,6 +2,7 @@
 #define SPOTIFYAPI_H
 
 #include <functional>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QUrl>
 #include <QUrlQuery>
@@ -46,6 +47,8 @@ public:
     void queue(const QString &deviceId, const QString &uri, Callback callback);
     void next(const QString &deviceId, Callback callback);
     void setVolume(const QString &deviceId, int percent, Callback callback);
+    // paged loads (these four) and track() for link expansion are bulk requests: they wait for
+    // a slot in the request budget instead of failing
     void myPlaylists(ListCallback<SpotifyPlaylist> callback);
     void playlistTracks(const QString &playlistId, ListCallback<SpotifyTrack> callback);
     void likedTracks(ListCallback<SpotifyTrack> callback);
@@ -54,20 +57,25 @@ public:
     // GET of any Web API path, e.g. "/me/player?market=from_token"
     void get(const QString &pathQuery, Callback callback);
 
-    // after a 429 no request is sent until this time (ms since the epoch); kept across restarts
-    qint64 blockedUntil() const { return m_blockedUntil; }
+    // after a 429 no request is sent until this time (ms since the epoch; kept across restarts),
+    // after a budget overrun for 1 min (not kept)
+    qint64 blockedUntil() const { return qMax(m_blockedUntil, m_overrunBlockedUntil); }
     bool isBlocked() const;
 
 signals:
     // a request failed with 429 from Spotify
     void rateLimited(const QString &message);
-    // a request was not sent: too many in a short time
+    // a request was not sent: too many in a short time, all requests are held back for 1 min
     void budgetExceeded(const QString &message);
 
 private:
-    void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false);
+    // bulk: one of many requests of a paged load or a link expansion; it waits for a free slot
+    // in the request budget instead of failing
+    void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false,
+                 bool bulk = false);
     // true when the request was held or refused instead of sent
-    bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried);
+    bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried,
+              bool bulk);
     void refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback);
     void blockFor(int retryAfterSeconds);
     void clearBlock();
@@ -79,6 +87,9 @@ private:
     QNetworkAccessManager *m_network;
     QString m_dataDir;
     qint64 m_blockedUntil = 0;
+    qint64 m_overrunBlockedUntil = 0;
+    // on a monotonic clock: a wall-clock step must not freeze or free the window
+    QElapsedTimer m_budgetClock;
     RequestBudget m_budget;
 };
 

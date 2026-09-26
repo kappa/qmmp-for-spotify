@@ -81,7 +81,8 @@ plugin install location). The distro's older qmmp is not a target.
   - `album(id)` + album tracks, `track(id)` — for link expansion
   - Handles 401 (refresh, retry once), 429 (`Retry-After`, see the rate-limit gate below),
     maps other errors to a message string (Spotify's own message where present).
-  - Sends at most 30 requests in any rolling 10 s (request budget, see below).
+  - Sends at most 30 requests in any rolling 10 s; paged loads and link expansion wait for a
+    slot and use at most 20 of them (request budget, see below).
   - Logs every request to `api.log` next to the token file (see below).
 - `SpotifyPoller` — polls `GET /me/player` (the only periodic request), emits
   `stateChanged(PlayerState)`. The schedule (`pollpolicy`) depends on whether qmmp is
@@ -97,8 +98,9 @@ plugin install location). The distro's older qmmp is not a target.
     end (poll time + duration − progress, from every successful poll): one 5 s before it,
     so the engine's queue step 1.5 s before the end acts on fresh state, and one 1.5 s after
     it, to confirm the device moved on (or let the engine's "did not advance" fallback act
-    on fresh state). They replace the interval only when sooner; a track-end poll less than
-    2 s away is skipped (a stalled progress must not repeat it at once);
+    on fresh state). They replace the interval only when sooner; each fires at most once per
+    track (again after a track change, or a restart or seek back of more than 2 s), and one
+    less than 2 s away is skipped (a stalled progress must not repeat it);
   - a successful poll with no playback (204) stops polling unless the engine is active;
   - failed polls retry after 2, 4, … 256 s; the 9th failure in a row stops polling with
     one notice "Spotify: lost connection, polling stopped";
@@ -178,7 +180,7 @@ progress, timestamp.
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
 | Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. |
-| Request loop (safety net) | At most 30 Web API requests in any rolling 10 s (token refreshes excluded); a request over the budget is not sent and fails with "Spotify: too many requests, holding back", one notice per burst. |
+| Request loop (safety net) | At most 30 Web API requests in any rolling 10 s (token refreshes excluded). Paged loads and link expansion wait for a slot and use at most 20 of them. Any other request over the budget is not sent: it fails with "Spotify: too many requests, pausing for 1 min" (one notice) and all requests are held back for 60 s through the rate-limit gate. |
 
 ## Testing
 
@@ -283,14 +285,21 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   5 MB. Each line is also sent to the `spotify.api` logging category (off by default;
   `QT_LOGGING_RULES="spotify.api=true"`).
 - Request budget: a safety net against request loops in `SpotifyApi`, next to the rate-limit
-  gate: at most 30 Web API requests in any rolling 10 s window (`RequestBudget`; token
-  refreshes are not counted, only requests actually sent). A request over the budget is not
-  sent: its callback fails on the next event-loop turn with status 0, `budgetExceeded` set
-  and "Spotify: too many requests, holding back", and `api.log` gets a line with status 0,
-  duration 0 and note `budget`. The notice shows once per burst (again only after 10 s
-  without a refusal). The poller treats a refused poll like a rate-limited one: not a
-  failure, the next poll at the normal interval.
+  gate: at most 30 Web API requests in any rolling 10 s window (`RequestBudget`, on a
+  monotonic clock; token refreshes are not counted, only requests actually sent). Bulk
+  requests (the pages of playlist, Liked Songs, album and playlist-list loads, and `track()`
+  for link expansion) are finite, so they wait for a free slot (timer, then through the gate
+  again) instead of failing, and together use at most 20 of the 30 slots, so polls and
+  playback commands always have room. Any other request over the budget means something
+  loops: it is not sent, its callback fails on the next event-loop turn with status 0,
+  `budgetExceeded` set and "Spotify: too many requests, pausing for 1 min", `api.log` gets a
+  line with status 0, duration 0 and note `budget`, and all Web API requests are blocked
+  locally for 60 s through the rate-limit gate (not persisted; logging out clears it).
+  Requests during that block fail like rate-limited ones ("rate limited, try again in N s",
+  `blocked` in the log), whose notices are suppressed until the block ends, so the user sees
+  one notice. The poller treats the refused poll like a rate-limited one: not a failure, the
+  next poll 1 s after the block.
 - Polling by focus (replaces the window-visibility rule): the general plugin reports the
   application state instead of watching windows; focused and playing polls every 5 s,
   everything else every 60 s, and both track-end polls (5 s before, 1.5 s after) apply in
-  every state.
+  every state, each at most once per track.

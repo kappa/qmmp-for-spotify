@@ -267,16 +267,10 @@ void TestEngineLogic::fallbackAtTrackEndRunsOnce()
         m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
     }
     QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
-    m_logic->playFailed(m_sink.lastGeneration, u"Spotify: offline"_s, true);
-    for(int i = 0; i < 10; i++)
-    {
-        m_now += 250;
-        m_logic->tick();
-        m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
-    }
-    QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
     QCOMPARE(m_sink.calls.count(u"queue spotify:track:b"_s), 1);
-    QCOMPARE(m_sink.calls.last(), u"fatal"_s);
+    const qsizetype sent = m_sink.calls.size();
+    m_logic->playFailed(m_sink.lastGeneration, u"Spotify: offline"_s, true);
+    QCOMPARE(m_sink.calls.mid(sent), QStringList { u"fatal"_s });
 }
 
 void TestEngineLogic::enqueueDoesNotQueueImmediately()

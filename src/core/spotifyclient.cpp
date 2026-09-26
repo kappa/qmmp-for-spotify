@@ -4,7 +4,6 @@
 #include <QSettings>
 #include "apipolicy.h"
 #include "followerlogic.h"
-#include "requestbudget.h"
 #include "spotifyapi.h"
 #include "spotifyauth.h"
 #include "spotifyclient.h"
@@ -124,14 +123,9 @@ void SpotifyClient::notify(const QString &message)
         if(shown)
             return;
     }
-    // every refused request of a burst reports it; the notice shows again only after a quiet window
+    // the overrun blocks requests for 1 min: their "rate limited" failures are not shown again
     if(message == budgetExceededMessage())
-    {
-        const bool shown = now < m_budgetNoticeUntil;
-        m_budgetNoticeUntil = now + RequestBudget::kWindowMs;
-        if(shown)
-            return;
-    }
+        m_rateLimitNoticeUntil = qMax(m_rateLimitNoticeUntil, m_api->blockedUntil());
     if(now - m_noticeTimes.value(message, -kNoticeRepeatMs) < kNoticeRepeatMs)
         return;
     m_noticeTimes.insert(message, now);

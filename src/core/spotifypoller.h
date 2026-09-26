@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QTimer>
+#include "pollpolicy.h"
 #include "spotifytypes.h"
 
 class SpotifyApi;
@@ -39,7 +40,8 @@ private:
     void poll();
     void pollEarly();
     void scheduleNext();
-    int nextDelayMs() const;
+    void arm(int delayMs, PollKind kind = PollKind::Regular);
+    PollPlan plan() const;
 
     SpotifyApi *m_api;
     QTimer m_timer;
@@ -57,6 +59,13 @@ private:
     int m_failures = 0;
     qint64 m_lastPollAt = 0;
     qint64 m_predictedEnd = 0;
+    // what the armed timer's poll is: a track-end poll is marked done when it is sent
+    PollKind m_armedKind = PollKind::Regular;
+    // the track the track-end polls belong to, its progress at the last poll, and which fired
+    QString m_endTrack;
+    qint64 m_endProgress = 0;
+    bool m_beforeEndPolled = false;
+    bool m_afterEndPolled = false;
 };
 
 #endif
