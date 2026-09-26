@@ -4,19 +4,19 @@
 
 namespace {
 
-PollInputs inputs(bool visible, bool engineActive, bool selectedPlaying)
+PollInputs inputs(bool focused, bool engineActive, bool selectedPlaying)
 {
     PollInputs in;
-    in.visible = visible;
+    in.focused = focused;
     in.engineActive = engineActive;
     in.selectedPlaying = selectedPlaying;
     in.nowMs = 1000000;
     return in;
 }
 
-PollInputs hiddenPlaying(qint64 msToEnd)
+PollInputs playing(bool focused, qint64 msToEnd)
 {
-    PollInputs in = inputs(false, true, true);
+    PollInputs in = inputs(focused, true, true);
     in.predictedEndMs = in.nowMs + msToEnd;
     return in;
 }
@@ -27,26 +27,30 @@ class TestPollPolicy : public QObject
 {
     Q_OBJECT
 private slots:
-    void visibleActivePollsFast();
-    void idleOrHiddenPollsSlowly();
+    void focusedPlayingPolls5s();
+    void everythingElsePollsSlowly();
     void awaitingEnginePollsFast();
-    void hiddenPollsBeforeTrackEnd();
+    void pollsAroundTrackEnd_data();
+    void pollsAroundTrackEnd();
+    void pausedTrackHasNoTrackEndPolls();
     void predictedEndFromPoll();
     void noPlaybackStopsUnlessEngineActive();
     void errorsBackOffThenStop();
+    void automaticPollKeepsBackoff();
     void interactionThrottle();
     void waitsForRateLimitBlock();
 };
 
-void TestPollPolicy::visibleActivePollsFast()
+void TestPollPolicy::focusedPlayingPolls5s()
 {
-    QCOMPARE(nextPollDelayMs(inputs(true, true, false)), 2000);
-    QCOMPARE(nextPollDelayMs(inputs(true, false, true)), 2000);
+    QCOMPARE(nextPollDelayMs(inputs(true, true, true)), 5000);
+    QCOMPARE(nextPollDelayMs(inputs(true, false, true)), 5000);
 }
 
-void TestPollPolicy::idleOrHiddenPollsSlowly()
+void TestPollPolicy::everythingElsePollsSlowly()
 {
     QCOMPARE(nextPollDelayMs(inputs(true, false, false)), 60000);
+    QCOMPARE(nextPollDelayMs(inputs(true, true, false)), 60000);
     QCOMPARE(nextPollDelayMs(inputs(false, false, false)), 60000);
     QCOMPARE(nextPollDelayMs(inputs(false, true, false)), 60000);
     QCOMPARE(nextPollDelayMs(inputs(false, true, true)), 60000);
@@ -60,25 +64,47 @@ void TestPollPolicy::awaitingEnginePollsFast()
     QCOMPARE(nextPollDelayMs(in), 2000);
     in.awaitingSinceMs = in.nowMs - 20000;
     QCOMPARE(nextPollDelayMs(in), 60000);
-    in.visible = true;
-    QCOMPARE(nextPollDelayMs(in), 2000);
+    in.focused = true;
+    QCOMPARE(nextPollDelayMs(in), 60000);
+    in.selectedPlaying = true;
+    QCOMPARE(nextPollDelayMs(in), 5000);
 }
 
-void TestPollPolicy::hiddenPollsBeforeTrackEnd()
+void TestPollPolicy::pollsAroundTrackEnd_data()
 {
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(30000)), 25000);
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(200000)), 60000);
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(5000)), 60000);
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(3000)), 60000);
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(7000)), 2000);
-    QCOMPARE(nextPollDelayMs(hiddenPlaying(6999)), 60000);
+    QTest::addColumn<bool>("focused");
+    QTest::addColumn<qint64>("msToEnd");
+    QTest::addColumn<int>("delay");
 
-    PollInputs visible = hiddenPlaying(30000);
-    visible.visible = true;
-    QCOMPARE(nextPollDelayMs(visible), 2000);
+    QTest::newRow("unfocused, far") << false << qint64(200000) << 60000;
+    QTest::newRow("unfocused, 5 s before") << false << qint64(30000) << 25000;
+    QTest::newRow("unfocused, 2 s floor") << false << qint64(7000) << 2000;
+    QTest::newRow("unfocused, after the end") << false << qint64(6999) << 8499;
+    QTest::newRow("unfocused, from the pre-end poll") << false << qint64(5000) << 6500;
+    QTest::newRow("unfocused, near the end") << false << qint64(1000) << 2500;
+    QTest::newRow("unfocused, after-end floor") << false << qint64(400) << 60000;
+    QTest::newRow("unfocused, past the end") << false << qint64(-1000) << 60000;
+    QTest::newRow("focused, far") << true << qint64(30000) << 5000;
+    QTest::newRow("focused, 5 s before") << true << qint64(8000) << 3000;
+    QTest::newRow("focused, 2 s floor") << true << qint64(6999) << 5000;
+    QTest::newRow("focused, after the end") << true << qint64(1000) << 2500;
+    QTest::newRow("focused, after-end floor") << true << qint64(400) << 5000;
+}
 
-    PollInputs paused = hiddenPlaying(30000);
+void TestPollPolicy::pollsAroundTrackEnd()
+{
+    QFETCH(bool, focused);
+    QFETCH(qint64, msToEnd);
+    QFETCH(int, delay);
+    QCOMPARE(nextPollDelayMs(playing(focused, msToEnd)), delay);
+}
+
+void TestPollPolicy::pausedTrackHasNoTrackEndPolls()
+{
+    PollInputs paused = playing(true, 8000);
     paused.selectedPlaying = false;
+    QCOMPARE(nextPollDelayMs(paused), 60000);
+    paused.focused = false;
     QCOMPARE(nextPollDelayMs(paused), 60000);
 }
 
@@ -104,13 +130,13 @@ void TestPollPolicy::noPlaybackStopsUnlessEngineActive()
     PollInputs in = inputs(true, false, false);
     in.hadPlayback = false;
     QCOMPARE(nextPollDelayMs(in), kStopPolling);
-    in.visible = false;
+    in.focused = false;
     QCOMPARE(nextPollDelayMs(in), kStopPolling);
 
     in.engineActive = true;
     QCOMPARE(nextPollDelayMs(in), 60000);
-    in.visible = true;
-    QCOMPARE(nextPollDelayMs(in), 2000);
+    in.focused = true;
+    QCOMPARE(nextPollDelayMs(in), 60000);
 }
 
 void TestPollPolicy::errorsBackOffThenStop()
@@ -130,6 +156,16 @@ void TestPollPolicy::errorsBackOffThenStop()
     idle.hadPlayback = false;
     idle.failures = 3;
     QCOMPARE(nextPollDelayMs(idle), 8000);
+}
+
+void TestPollPolicy::automaticPollKeepsBackoff()
+{
+    QCOMPARE(pollSoonDelayMs(0, -1), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(0, 50000), kPollSoonMs);
+    QCOMPARE(pollSoonDelayMs(1, 1500), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(3, 7000), kKeepTimer);
+    QCOMPARE(pollSoonDelayMs(3, -1), 8000);
+    QCOMPARE(pollSoonDelayMs(9, -1), kKeepTimer);
 }
 
 void TestPollPolicy::interactionThrottle()

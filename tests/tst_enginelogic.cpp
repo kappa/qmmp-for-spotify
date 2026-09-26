@@ -67,6 +67,8 @@ private slots:
     void queuesNextAndSwitchesGaplessly();
     void startsNextWhenDeviceDidNotAdvance();
     void fallsBackToPlayWhenQueueFailed();
+    void failedQueueIsNotResent();
+    void fallbackAtTrackEndRunsOnce();
     void enqueueDoesNotQueueImmediately();
     void tickQueuesOnceAtLeadTime();
     void tickDoesNotQueueWhilePaused();
@@ -232,6 +234,49 @@ void TestEngineLogic::fallsBackToPlayWhenQueueFailed()
     QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s,
                                           u"state Buffering"_s, u"play spotify:track:b 0"_s }));
     QVERIFY(m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::failedQueueIsNotResent()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->tick();
+    m_logic->queueFailed();
+    for(int i = 0; i < 40; i++)
+    {
+        m_now += 250;
+        m_logic->tick();
+        m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 199000));
+    }
+    QCOMPARE(m_sink.calls.count(u"queue spotify:track:b"_s), 1);
+}
+
+void TestEngineLogic::fallbackAtTrackEndRunsOnce()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 198500; // duration 200000 - kQueueLeadMs 1500
+    m_logic->tick();
+    m_logic->queueFailed();
+    m_now += 500;
+    for(int i = 0; i < 10; i++)
+    {
+        m_now += 250;
+        m_logic->tick();
+        m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    }
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
+    m_logic->playFailed(m_sink.lastGeneration, u"Spotify: offline"_s, true);
+    for(int i = 0; i < 10; i++)
+    {
+        m_now += 250;
+        m_logic->tick();
+        m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    }
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
+    QCOMPARE(m_sink.calls.count(u"queue spotify:track:b"_s), 1);
+    QCOMPARE(m_sink.calls.last(), u"fatal"_s);
 }
 
 void TestEngineLogic::enqueueDoesNotQueueImmediately()

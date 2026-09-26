@@ -43,12 +43,12 @@ void SpotifyPoller::setSelectedDevice(const QString &deviceId)
     pollSoon();
 }
 
-void SpotifyPoller::setVisible(bool visible)
+void SpotifyPoller::setFocused(bool focused)
 {
-    if(m_visible == visible)
+    if(m_focused == focused)
         return;
-    m_visible = visible;
-    if(visible)
+    m_focused = focused;
+    if(focused)
         pollOnInteraction();
 }
 
@@ -65,9 +65,14 @@ void SpotifyPoller::pollSoon()
     }
     // while rate limited the next poll stays at the end of the block
     if(m_api->isBlocked())
+    {
         scheduleNext();
-    else
-        m_timer.start(kPollSoonMs);
+        return;
+    }
+    // failing commands (a queue call while offline) must not shorten the backoff
+    const int delay = pollSoonDelayMs(m_failures, m_timer.isActive() ? m_timer.remainingTime() : -1);
+    if(delay != kKeepTimer)
+        m_timer.start(delay);
 }
 
 void SpotifyPoller::userCommand()
@@ -75,13 +80,22 @@ void SpotifyPoller::userCommand()
     // a fresh retry sequence
     if(isPollHardFail(m_failures))
         m_failures = 0;
+    // the backoff holds automatic polls back, not the user's
+    else if(m_failures > 0)
+        pollEarly();
 }
 
 void SpotifyPoller::pollOnInteraction()
 {
+    if(isPollHardFail(m_failures))
+        m_failures = 0;
+    pollEarly();
+}
+
+void SpotifyPoller::pollEarly()
+{
     if(!m_enabled)
         return;
-    userCommand();
     // the reply in flight is fresh
     if(m_inFlight)
         return;
@@ -116,7 +130,8 @@ void SpotifyPoller::poll()
             self->m_predictedEnd = predictedTrackEndMs(state, QDateTime::currentMSecsSinceEpoch());
             emit self->stateChanged(state);
         }
-        else if(!result.rateLimited)
+        // held back locally: nothing is wrong with the connection
+        else if(!result.rateLimited && !result.budgetExceeded)
             self->m_failures++;
         self->scheduleNext();
         if(self->m_pollAgain)
@@ -150,7 +165,7 @@ void SpotifyPoller::scheduleNext()
 int SpotifyPoller::nextDelayMs() const
 {
     PollInputs in;
-    in.visible = m_visible;
+    in.focused = m_focused;
     in.engineActive = m_engineActive;
     in.engineAwaiting = m_engineAwaiting;
     in.awaitingSinceMs = m_awaitingSince;

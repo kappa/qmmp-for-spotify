@@ -7,8 +7,8 @@ struct PlayerState;
 
 struct PollInputs
 {
-    // a qmmp main window is shown and not minimized
-    bool visible = true;
+    // a qmmp window has the focus (the application is active)
+    bool focused = true;
     // qmmp's engine holds a Spotify track
     bool engineActive = false;
     // the engine sent play/next and waits for the device to start; its start timeout needs polls
@@ -36,9 +36,13 @@ const int kMaxPollRetries = 8;
 // the delay until the next poll, or kStopPolling: nothing to watch, or the connection is lost
 int nextPollDelayMs(const PollInputs &inputs);
 bool isPollHardFail(int failures);
+// how an automatic poll request (a command's reply, the engine becoming active) re-arms the
+// poll timer (remainingMs < 0: no timer), or kKeepTimer: soon, but never ahead of the error
+// backoff
+int pollSoonDelayMs(int failures, int remainingMs);
 // when the track in a successful poll ends if it keeps playing; 0 when nothing plays
 qint64 predictedTrackEndMs(const PlayerState &state, qint64 pollTimeMs);
-// how a window, focus or dialog trigger re-arms the poll timer (remainingMs < 0: no timer),
+// how a focus, dialog or user-command trigger re-arms the poll timer (remainingMs < 0: no timer),
 // or kKeepTimer. It polls at most once per 5 s after the last poll was sent: inside that
 // window it only brings a later timer forward to policyDelayMs, or, when polling stopped,
 // polls when the window ends.

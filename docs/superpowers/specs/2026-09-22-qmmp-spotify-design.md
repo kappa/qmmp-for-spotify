@@ -81,32 +81,41 @@ plugin install location). The distro's older qmmp is not a target.
   - `album(id)` + album tracks, `track(id)` — for link expansion
   - Handles 401 (refresh, retry once), 429 (`Retry-After`, see the rate-limit gate below),
     maps other errors to a message string (Spotify's own message where present).
+  - Sends at most 30 requests in any rolling 10 s (request budget, see below).
   - Logs every request to `api.log` next to the token file (see below).
 - `SpotifyPoller` — polls `GET /me/player` (the only periodic request), emits
-  `stateChanged(PlayerState)`. The schedule (`pollpolicy`) depends on whether a qmmp main
-  window is visible (shown and not minimized; reported by the general plugin, qmmp without
-  it counts as visible):
-  - visible, and the engine is active or the selected device is playing: every 2 s;
-  - otherwise (visible idle, or hidden): every 60 s; while the engine waits for the device
-    to start a track (its start timeout needs polls): every 2 s, for at most 20 s;
-  - hidden with the selected device playing: an extra poll 5 s before the predicted track
-    end (poll time + duration − progress, from every successful poll), so the engine's
-    queue step 1.5 s before the end acts on fresh state; if that poll is less than 2 s away
-    it counts as inside the last 5 s (a stalled progress must not repeat it at once);
+  `stateChanged(PlayerState)`. The schedule (`pollpolicy`) depends on whether qmmp is
+  focused (`QGuiApplication::applicationState() == Qt::ApplicationActive`: any qmmp window
+  has the focus; reported by the general plugin, qmmp without it counts as focused;
+  unfocused and minimized are the same state) and on whether the last poll showed the
+  selected device playing (a paused track is not playing):
+  - while the engine waits for the device to start a track (its start timeout needs polls):
+    every 2 s, for at most 20 s;
+  - focused and playing: every 5 s;
+  - everything else (focused idle, paused or stopped; unfocused; minimized): every 60 s;
+  - while the selected device plays, in every state, two track-end polls from the predicted
+    end (poll time + duration − progress, from every successful poll): one 5 s before it,
+    so the engine's queue step 1.5 s before the end acts on fresh state, and one 1.5 s after
+    it, to confirm the device moved on (or let the engine's "did not advance" fallback act
+    on fresh state). They replace the interval only when sooner; a track-end poll less than
+    2 s away is skipped (a stalled progress must not repeat it at once);
   - a successful poll with no playback (204) stops polling unless the engine is active;
   - failed polls retry after 2, 4, … 256 s; the 9th failure in a row stops polling with
     one notice "Spotify: lost connection, polling stopped";
-  - stopped polling resumes on interaction: a main window shown, qmmp focused or a Spotify
-    dialog opened, at most one poll per 5 s after the last one was sent (inside that window
-    a trigger only brings a later poll forward to the current schedule, or, when polling had
-    stopped, polls when the window ends). Commands poll soon (`pollSoon()`, not throttled);
-    one arriving while a poll is in flight polls again after it. A 204-stop resumes on any
-    of these; a hard fail only on interaction or a user playback command (play, pause,
-    seek, device choice), with a fresh retry sequence — automatic engine requests (queueing,
+  - stopped polling resumes on interaction: qmmp becoming focused or a Spotify dialog
+    opened, at most one poll per 5 s after the last one was sent (inside that window a
+    trigger only brings a later poll forward to the current schedule, or, when polling had
+    stopped, polls when the window ends). Command replies poll soon (`pollSoon()`, not
+    throttled); one arriving while a poll is in flight polls again after it. During the
+    error backoff `pollSoon()` never polls ahead of the backoff schedule (a failing queue
+    call must not turn it into a poll per reply); only a user playback command (play,
+    pause, seek, device choice) or an interaction polls earlier, subject to the same 5 s
+    throttle. A 204-stop resumes on any of these; a hard fail only on interaction or a user
+    playback command, with a fresh retry sequence — automatic engine requests (queueing,
     track ends) do not restart it.
   Pauses while logged out. While requests are rate-limit blocked, the next poll is
   scheduled 1 s after the block ends (`pollSoon()` does not shorten that); blocked polls
-  are not failures.
+  and polls refused by the request budget are not failures.
 - `SpotifyLink` — parses `spotify://{track,album,playlist}/<id>`,
   `spotify:{track,album,playlist}:<id>` and `https://open.spotify.com/[intl-xx/]{track,album,playlist}/<id>[?…]`.
   Canonical playlist path for a track: `spotify://track/<id>`.
@@ -168,7 +177,8 @@ progress, timestamp.
 | 429 | Block all Web API requests until `Retry-After` (missing → 30 s, at most 24 h); during a block of ≤ 10 s requests wait for its end, during a longer one they fail with one notice per block; poller waits for the block. |
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
-| Network down | Poller retries after 2 … 256 s, then stops with one notice until the next interaction; no error spam. |
+| Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. |
+| Request loop (safety net) | At most 30 Web API requests in any rolling 10 s (token refreshes excluded); a request over the budget is not sent and fails with "Spotify: too many requests, holding back", one notice per burst. |
 
 ## Testing
 
@@ -215,7 +225,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 - If the device reaches the end of a track with the next one already queued but has not
   advanced to it on its own, qmmp sends Spotify's skip-to-next instead of `play`, so the
   already-queued track is consumed instead of replayed; only if the queue call itself
-  failed does qmmp fall back to `play`.
+  failed does qmmp fall back to `play`. The queue call is sent at most once per next track:
+  a failed one is not resent (it used to be resent on every 250 ms tick), and the track-end
+  fallback is a single attempt.
 - Volume control added: while a Spotify track is current, qmmp's volume slider and mute
   drive the device (`PUT /me/player/volume`, debounced 300 ms; mute sends 0, unmute restores
   the level), and volume changes on the device move qmmp's slider. Echoes of our own changes
@@ -267,6 +279,18 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   `api.log` next to the token file (`<qmmp config dir>/spotify/api.log`, the CLI its own
   dir): local time with ms, verb, path and query, HTTP status (0 = network error), duration
   in ms, note (`retry`, `retry-after=<s>` with the seconds applied, `blocked` for a locally refused
-  request, or the network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
+  request, `budget` for one refused by the request budget, or the network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
   5 MB. Each line is also sent to the `spotify.api` logging category (off by default;
   `QT_LOGGING_RULES="spotify.api=true"`).
+- Request budget: a safety net against request loops in `SpotifyApi`, next to the rate-limit
+  gate: at most 30 Web API requests in any rolling 10 s window (`RequestBudget`; token
+  refreshes are not counted, only requests actually sent). A request over the budget is not
+  sent: its callback fails on the next event-loop turn with status 0, `budgetExceeded` set
+  and "Spotify: too many requests, holding back", and `api.log` gets a line with status 0,
+  duration 0 and note `budget`. The notice shows once per burst (again only after 10 s
+  without a refusal). The poller treats a refused poll like a rate-limited one: not a
+  failure, the next poll at the normal interval.
+- Polling by focus (replaces the window-visibility rule): the general plugin reports the
+  application state instead of watching windows; focused and playing polls every 5 s,
+  everything else every 60 s, and both track-end polls (5 s before, 1.5 s after) apply in
+  every state.

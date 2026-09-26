@@ -98,6 +98,17 @@ bool SpotifyApi::gate(const QByteArray &verb, const QUrl &url, const QByteArray 
     return true;
 }
 
+void SpotifyApi::refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback)
+{
+    logApiRequest(m_dataDir, verb, pathQuery(url), 0, 0, u"budget"_s);
+    ApiResult result;
+    result.message = budgetExceededMessage();
+    result.budgetExceeded = true;
+    emit budgetExceeded(result.message);
+    // like a refusal at the gate: callers may be in the middle of a state change
+    QTimer::singleShot(0, this, [callback, result] { callback(result); });
+}
+
 void SpotifyApi::clearBlock()
 {
     m_blockedUntil = 0;
@@ -136,6 +147,12 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
         // a 429 may have arrived while the token was being refreshed
         if(gate(verb, url, body, callback, retried))
             return;
+        // a safety net against request loops; token refreshes do not count
+        if(!m_budget.take(now()))
+        {
+            refuseOverBudget(verb, url, callback);
+            return;
+        }
         QNetworkRequest networkRequest(url);
         networkRequest.setRawHeader("Authorization", "Bearer " + m_auth->accessToken().toUtf8());
         networkRequest.setHeader(QNetworkRequest::ContentLengthHeader, body.size());
@@ -165,7 +182,7 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
             switch(decision.action)
             {
             case ApiDecision::Success:
-                callback(ApiResult { true, status, QString(), false, data, QString(), false });
+                callback(ApiResult { true, status, QString(), false, data, QString(), false, false });
                 break;
             case ApiDecision::RefreshAndRetry:
                 m_auth->refresh([=](bool refreshed) {
@@ -173,7 +190,7 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
                         request(verb, url, body, callback, true);
                     else
                         callback(ApiResult { false, status, u"Spotify session expired, please log in again"_s, false, data,
-                                             QString(), false });
+                                             QString(), false, false });
                 });
                 break;
             case ApiDecision::RetryAfter:
@@ -182,7 +199,7 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
                 break;
             case ApiDecision::Fail:
                 callback(ApiResult { false, status, decision.message, decision.deviceProblem, data, decision.reason,
-                                     decision.rateLimited });
+                                     decision.rateLimited, false });
                 break;
             }
         });

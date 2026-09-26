@@ -55,6 +55,11 @@ bool isRateLimitMessage(const QString &message)
     return message.startsWith("Spotify: rate limited, "_L1);
 }
 
+QString budgetExceededMessage()
+{
+    return u"Spotify: too many requests, holding back"_s;
+}
+
 ApiDecision rateLimitDecision(qint64 waitMs, bool retried)
 {
     ApiDecision decision;

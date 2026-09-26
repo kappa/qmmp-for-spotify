@@ -16,14 +16,16 @@ public:
     void setEnabled(bool enabled);
     void setEngineActive(bool active, bool awaiting);
     void setSelectedDevice(const QString &deviceId);
-    // a qmmp main window is shown; without the general plugin qmmp counts as visible
-    void setVisible(bool visible);
-    // a poll soon, also after polling stopped for no playback, but not after a hard fail;
-    // commands use this, it is not throttled; during a poll it polls again after it
+    // a qmmp window has the focus; without the general plugin qmmp counts as focused
+    void setFocused(bool focused);
+    // a poll soon, also after polling stopped for no playback, but not after a hard fail and
+    // not ahead of the error backoff; commands' replies use this, it is not throttled; during
+    // a poll it polls again after it
     void pollSoon();
-    // a playback command by the user: a hard fail ends, the command's pollSoon() polls again
+    // a playback command by the user: a hard fail ends, the command's pollSoon() polls again;
+    // during the backoff it polls like an interaction
     void userCommand();
-    // a window shown, focus or a dialog opened: ends a hard fail and polls, at most once per 5 s
+    // focus or a dialog opened: ends a hard fail and polls, at most once per 5 s
     void pollOnInteraction();
     PlayerState lastState() const { return m_last; }
 
@@ -35,6 +37,7 @@ signals:
 
 private:
     void poll();
+    void pollEarly();
     void scheduleNext();
     int nextDelayMs() const;
 
@@ -46,7 +49,7 @@ private:
     bool m_engineActive = false;
     bool m_engineAwaiting = false;
     qint64 m_awaitingSince = 0;
-    bool m_visible = true;
+    bool m_focused = true;
     bool m_inFlight = false;
     bool m_pollAgain = false;
     // from the last successful poll; nothing stops before the first one

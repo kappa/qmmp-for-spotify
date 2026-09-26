@@ -4,6 +4,7 @@
 #include <QSettings>
 #include "apipolicy.h"
 #include "followerlogic.h"
+#include "requestbudget.h"
 #include "spotifyapi.h"
 #include "spotifyauth.h"
 #include "spotifyclient.h"
@@ -57,6 +58,7 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
     });
     connect(m_auth, &SpotifyAuth::loginFailed, this, [this](const QString &message) { notify(message); });
     connect(m_api, &SpotifyApi::rateLimited, this, [this](const QString &message) { notify(message); });
+    connect(m_api, &SpotifyApi::budgetExceeded, this, [this](const QString &message) { notify(message); });
 }
 
 QString SpotifyClient::clientId() const
@@ -119,6 +121,14 @@ void SpotifyClient::notify(const QString &message)
     {
         const bool shown = now < m_rateLimitNoticeUntil;
         m_rateLimitNoticeUntil = qMax(m_rateLimitNoticeUntil, m_api->blockedUntil());
+        if(shown)
+            return;
+    }
+    // every refused request of a burst reports it; the notice shows again only after a quiet window
+    if(message == budgetExceededMessage())
+    {
+        const bool shown = now < m_budgetNoticeUntil;
+        m_budgetNoticeUntil = now + RequestBudget::kWindowMs;
         if(shown)
             return;
     }

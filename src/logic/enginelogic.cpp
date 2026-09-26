@@ -45,7 +45,7 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
         return true;
     }
     m_next = entry;
-    m_nextQueued = false;
+    m_nextQueue = Queue::NotSent;
     return true;
 }
 
@@ -121,7 +121,7 @@ void EngineLogic::stop()
     m_activeGeneration = 0;
     m_current = Entry();
     m_next = Entry();
-    m_nextQueued = false;
+    m_nextQueue = Queue::NotSent;
     m_awaiting = false;
     m_trackReported = false;
     m_track = SpotifyTrack();
@@ -180,10 +180,12 @@ void EngineLogic::playFailed(quint64 generation, const QString &message, bool sy
 }
 
 // the queue call failed (or its result never reached us): the entry never reached the
-// device, so the next-track-ends fallback must send apiPlay instead of skipping to it
+// device, so the next-track-ends fallback must send apiPlay instead of skipping to it; the
+// queue call is not sent again, or a lasting failure would repeat it on every tick
 void EngineLogic::queueFailed()
 {
-    m_nextQueued = false;
+    if(m_nextQueue == Queue::Sent)
+        m_nextQueue = Queue::Failed;
 }
 
 void EngineLogic::checkStartTimeout()
@@ -279,7 +281,7 @@ void EngineLogic::fail(const QString &message, bool systemic)
     m_cancelledPause = false;
     m_current = Entry();
     m_next = Entry();
-    m_nextQueued = false;
+    m_nextQueue = Queue::NotSent;
     m_awaiting = false;
     m_trackReported = false;
     m_activeGeneration = 0;
@@ -293,7 +295,7 @@ void EngineLogic::switchToNext(bool startNow)
     m_sink->reportState(EngineState::Stopped);
     m_current = m_next;
     m_next = Entry();
-    m_nextQueued = false;
+    m_nextQueue = Queue::NotSent;
     m_trackReported = false;
     m_track = SpotifyTrack();
     m_progressMs = 0;
@@ -309,7 +311,7 @@ void EngineLogic::finish()
 {
     if(!m_next.isEmpty())
     {
-        const bool queued = m_nextQueued;
+        const bool queued = m_nextQueue == Queue::Sent;
         switchToNext(!queued);
         if(queued)
             skipOnDevice();
@@ -342,12 +344,12 @@ void EngineLogic::deviceStopped()
 
 void EngineLogic::maybeQueueNext()
 {
-    if(m_state != EngineState::Playing || m_awaiting || m_next.isEmpty() || m_nextQueued)
+    if(m_state != EngineState::Playing || m_awaiting || m_next.isEmpty() || m_nextQueue != Queue::NotSent)
         return;
     if(m_track.durationMs <= 0 || m_track.durationMs - elapsed() > kQueueLeadMs)
         return;
+    m_nextQueue = Queue::Sent;
     m_sink->apiQueue(trackUri(m_next.id));
-    m_nextQueued = true;
 }
 
 bool EngineLogic::nearEnd() const

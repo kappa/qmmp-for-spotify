@@ -56,6 +56,7 @@ private:
     bool m_startupAttachTaken = false;
     QHash<QString, qint64> m_noticeTimes;
     qint64 m_rateLimitNoticeUntil = 0;
+    qint64 m_budgetNoticeUntil = 0;
 };
 
 #endif

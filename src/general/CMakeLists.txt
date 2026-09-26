@@ -7,7 +7,6 @@ add_library(spotifygeneral MODULE
     playlistdialog.cpp
     follower.cpp
     linkexpander.cpp
-    windowwatcher.cpp
 )
 target_link_libraries(spotifygeneral PRIVATE qmmp-spotify-core PkgConfig::QMMP Qt6::Widgets)
 set_target_properties(spotifygeneral PROPERTIES OUTPUT_NAME spotify INSTALL_RPATH "$ORIGIN/..")

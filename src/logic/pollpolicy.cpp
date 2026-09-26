@@ -5,15 +5,25 @@
 
 namespace {
 
+// awaiting a start; also the floor of a track-end poll
 const int kActiveMs = 2000;
+const int kPlayingMs = 5000;
 const int kIdleMs = 60000;
 const int kFirstRetryMs = 2000;
 // the extra poll before a track ends lands ahead of the engine's queue step (1.5 s before the end)
 const qint64 kBeforeEndMs = 5000;
+// the extra poll after a track ends shows the device on the next track, or the engine's
+// "did not advance" fallback acts on fresh state
+const qint64 kAfterEndMs = 1500;
 const qint64 kInteractionGapMs = 5000;
 // polls fast while waiting for a start at most this long: a device that never starts our
 // track must not be polled every 2 s for good
 const qint64 kAwaitingFastMs = 20000;
+
+int retryDelayMs(int failures)
+{
+    return kFirstRetryMs << (failures - 1);
+}
 
 }
 
@@ -22,23 +32,37 @@ int nextPollDelayMs(const PollInputs &in)
     if(isPollHardFail(in.failures))
         return kStopPolling;
     if(in.failures > 0)
-        return kFirstRetryMs << (in.failures - 1);
+        return retryDelayMs(in.failures);
     // the engine polls through a 204: a device that has not started yet reports none
     if(!in.hadPlayback && !in.engineActive)
         return kStopPolling;
-    const bool awaiting = in.engineAwaiting && in.nowMs - in.awaitingSinceMs < kAwaitingFastMs;
-    if(awaiting || (in.visible && (in.engineActive || in.selectedPlaying)))
+    if(in.engineAwaiting && in.nowMs - in.awaitingSinceMs < kAwaitingFastMs)
         return kActiveMs;
-    if(in.visible || !in.selectedPlaying || in.predictedEndMs <= 0)
-        return kIdleMs;
-    const qint64 untilBeforeEnd = in.predictedEndMs - kBeforeEndMs - in.nowMs;
-    // a nearer poll counts as inside the last 5 s: a stalled progress would repeat it at once
-    return untilBeforeEnd >= kActiveMs ? int(qMin<qint64>(untilBeforeEnd, kIdleMs)) : kIdleMs;
+    const int interval = in.focused && in.selectedPlaying ? kPlayingMs : kIdleMs;
+    if(!in.selectedPlaying || in.predictedEndMs <= 0)
+        return interval;
+    // a track-end poll nearer than 2 s is skipped: a stalled progress would repeat it at once
+    for(const qint64 at : { in.predictedEndMs - kBeforeEndMs, in.predictedEndMs + kAfterEndMs })
+    {
+        const qint64 delay = at - in.nowMs;
+        if(delay >= kActiveMs)
+            return int(qMin<qint64>(delay, interval));
+    }
+    return interval;
 }
 
 bool isPollHardFail(int failures)
 {
     return failures > kMaxPollRetries;
+}
+
+int pollSoonDelayMs(int failures, int remainingMs)
+{
+    if(failures == 0)
+        return kPollSoonMs;
+    if(isPollHardFail(failures) || remainingMs >= 0)
+        return kKeepTimer;
+    return retryDelayMs(failures);
 }
 
 qint64 predictedTrackEndMs(const PlayerState &state, qint64 pollTimeMs)
@@ -56,7 +80,7 @@ int interactionDelayMs(qint64 lastPollMs, qint64 nowMs, int remainingMs, int pol
     // polling stopped less than 5 s ago: the trigger must not be lost
     if(remainingMs < 0)
         return int(throttledFor);
-    // the state is fresh, but a window that became visible may need a sooner poll
+    // the state is fresh, but qmmp becoming focused may need a sooner poll
     return policyDelayMs != kStopPolling && policyDelayMs < remainingMs ? policyDelayMs : kKeepTimer;
 }
 

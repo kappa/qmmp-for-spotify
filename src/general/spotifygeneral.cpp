@@ -11,8 +11,8 @@
 #include "spotifyauth.h"
 #include "spotifyclient.h"
 #include "spotifygeneral.h"
+#include "spotifypoller.h"
 #include "trackbuilder.h"
-#include "windowwatcher.h"
 
 SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
 {
@@ -27,7 +27,13 @@ SpotifyGeneral::SpotifyGeneral(QObject *parent) : QObject(parent)
 
     new Follower(this);
     new LinkExpander(this);
-    new WindowWatcher(this);
+
+    // any qmmp window focused polls faster while playing; becoming focused is an interaction
+    SpotifyPoller *poller = client->poller();
+    poller->setFocused(QGuiApplication::applicationState() == Qt::ApplicationActive);
+    connect(qApp, &QGuiApplication::applicationStateChanged, this, [poller](Qt::ApplicationState state) {
+        poller->setFocused(state == Qt::ApplicationActive);
+    });
 }
 
 SpotifyGeneral::~SpotifyGeneral()

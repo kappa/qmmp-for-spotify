@@ -68,21 +68,6 @@ Alex wants no device selection:
 Found by Alex in the manual session after B7/B8; details and log excerpts in
 `.superpowers/sdd/2026-09-22-qmmp-spotify/progress.md`.
 
-### Failed queue request is re-sent without limit (rate-limit risk, HIGH PRIORITY)
-Offline, `POST /me/player/queue` for the same track was re-sent right after each failure,
-~35 times (08:33–08:41), bounded only by the 15 s timeout; kept going long after the
-track's end. With a fast-failing error it would repeat every engine tick (250 ms), about
-4 requests/s. (B7 review Minor 1, underrated.)
-
-### Queue failures bypass the poll backoff (rate-limit risk, HIGH PRIORITY)
-Each failed queue reply calls `pollSoon`, which ignores the backoff delay: polls went out
-every 15 s next to the queue retries, so the 8-retry hard fail came after ~3 min instead
-of ~8.5.
-
-### Paused qmmp still polls every 2 s
-Visible and paused (from qmmp): 2 s polling; expected 60 s. Stop does give 60 s. Likely
-"engine active" counts a paused Spotify track as active.
-
 ### "Nothing active" (204) does not stop polling while qmmp is Playing
 Web player closed while qmmp played: `GET /me/player` → 204 every 2 s, polling never
 stopped (the 204 stop is skipped while the engine is active, and the engine stays

@@ -56,6 +56,10 @@ public:
     quint64 activeGeneration() const { return m_activeGeneration; }
 
 private:
+    // the queue request for the next track is sent at most once: a failed one is not resent,
+    // the track-end fallback starts the track instead
+    enum class Queue { NotSent, Sent, Failed };
+
     struct Entry
     {
         QString path;
@@ -85,7 +89,7 @@ private:
     PlayerState m_last;
     Entry m_current;
     Entry m_next;
-    bool m_nextQueued = false;
+    Queue m_nextQueue = Queue::NotSent;
     bool m_awaiting = false;
     bool m_trackReported = false;
     EngineState m_state = EngineState::Stopped;

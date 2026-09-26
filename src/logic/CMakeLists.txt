@@ -8,6 +8,7 @@ add_library(spotifylogic STATIC
     followerlogic.cpp
     pollpolicy.cpp
     apilog.cpp
+    requestbudget.cpp
 )
 target_include_directories(spotifylogic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(spotifylogic PUBLIC Qt6::Core)

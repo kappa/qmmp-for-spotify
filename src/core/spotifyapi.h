@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QUrl>
 #include <QUrlQuery>
+#include "requestbudget.h"
 #include "spotifytypes.h"
 
 class QNetworkAccessManager;
@@ -20,6 +21,8 @@ struct ApiResult
     QString reason;
     // Spotify answered 429, or the request was refused locally while a 429 block lasts
     bool rateLimited = false;
+    // not sent: over the request budget (RequestBudget)
+    bool budgetExceeded = false;
 };
 
 class SpotifyApi : public QObject
@@ -58,11 +61,14 @@ public:
 signals:
     // a request failed with 429 from Spotify
     void rateLimited(const QString &message);
+    // a request was not sent: too many in a short time
+    void budgetExceeded(const QString &message);
 
 private:
     void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false);
     // true when the request was held or refused instead of sent
     bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried);
+    void refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback);
     void blockFor(int retryAfterSeconds);
     void clearBlock();
     template <typename T>
@@ -73,6 +79,7 @@ private:
     QNetworkAccessManager *m_network;
     QString m_dataDir;
     qint64 m_blockedUntil = 0;
+    RequestBudget m_budget;
 };
 
 #endif
