@@ -37,3 +37,6 @@ that can't be played in Alex's country: 14 in "My India" (e.g. "Jeva Nadhi"), 30
 Songs. The plugin ignores the flag and finds out only when playing fails.
 - Prefix the title of such tracks with `(unavailable) `, e.g. "(unavailable) Jeva Nadhi".
 - Possibly skip them without sending a play request (to decide at design time).
+- No message box when an unavailable track is skipped: today Spotify's 403 text
+  ("restriction violated") pops up even though qmmp skips to the next track
+  (Alex, 2026-09-26: "the message box is not needed").
