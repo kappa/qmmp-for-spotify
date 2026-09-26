@@ -46,3 +46,11 @@ Songs. The plugin ignores the flag and finds out only when playing fails.
 Adding a malformed Spotify link (e.g. a mangled track ID) shows Spotify's raw error
 "bad base62 URL". Replace it with a plain message along the lines of
 "Spotify: cannot add this link" (Alex).
+
+### Follow playback to another device (wanted, 2026-09-26)
+
+Today, when playback moves from the selected device to another one (e.g. transferred to
+the phone), qmmp pauses with a notice ("closed device" ruling, 5b6f17d). Alex prefers
+following, like Spotify's own apps: make the new device the selected one and keep going —
+qmmp shows what it plays and further commands act on it. A device that disappears with
+nothing playing elsewhere still pauses. Fits context playback.
