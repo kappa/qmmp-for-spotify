@@ -52,11 +52,14 @@ the skip-to-queued path, the "device did not advance" fallback, and queue-relate
 
 ### Long runs
 
-Runs longer than 500 tracks are handed over in portions. When Spotify starts the last
-track of a portion, qmmp hands over the next portion starting from that same track with
-`position_ms` = the current progress (one small hiccup per 500 tracks). Spotify accepted
-lists of 100, 800 and 2000 URIs in the spike; silent truncation was not checked, so the
-500 cap stays.
+Runs longer than 500 tracks are handed over in portions. About **2.5 s before the predicted
+end of the portion's last track**, qmmp hands over the next portion, starting from its
+first track at position 0 (decided 2026-09-26: cutting the last seconds of a track, which
+are often silent, beats a hiccup or a gap). The predicted end comes from the engine clock,
+refreshed by the pre-end poll ~5 s before the end. No queueing is used (it is one track per
+request and can't be undone). Spotify accepted lists of 100, 800 and 2000 URIs in the
+spike; silent truncation was not checked, so the 500 cap stays. At ~3.5 min per track a
+portion lasts ~29 h, so this is rare.
 
 ### Shuffle and repeat
 
@@ -133,7 +136,8 @@ Manual (live), including:
 - Mixed playlist: Spotify run → local file (device paused) → next Spotify run.
 - Start an album on the phone: qmmp loads it as `Spotify: <album>` and follows.
 - Let a context end with Autoplay on: qmmp follows (records what context Autoplay reports).
-- A run over 500 tracks crossing a portion boundary (e.g. an edited Liked Songs).
+- A run over 500 tracks crossing a portion boundary (e.g. an edited Liked Songs): the
+  last ~2.5 s of the portion's last track are cut, the next portion starts cleanly.
 
 ## Open, verified during implementation
 
