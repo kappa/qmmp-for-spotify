@@ -27,6 +27,7 @@ private slots:
     void volumeControlDisallowed();
     void networkError();
     void pauseOfPausedDeviceIsHarmless();
+    void restrictedTrack();
     void systemicPlayFailures_data();
     void systemicPlayFailures();
 };
@@ -222,6 +223,15 @@ void TestApiPolicy::pauseOfPausedDeviceIsHarmless()
     QVERIFY(isAlreadyPausedReply(403, u"ALREADY_PAUSED"_s));
     QVERIFY(!isAlreadyPausedReply(403, u"PREMIUM_REQUIRED"_s));
     QVERIFY(!isAlreadyPausedReply(404, u"UNKNOWN"_s));
+}
+
+void TestApiPolicy::restrictedTrack()
+{
+    const ApiDecision d = classifyReply(403, QString(), QByteArray(),
+        R"({"error":{"status":403,"message":"Player command failed: Restriction violated","reason":"UNKNOWN"}})", false);
+    QVERIFY(isRestrictedTrackReply(403, d.message));
+    QVERIFY(!isRestrictedTrackReply(404, d.message));
+    QVERIFY(!isRestrictedTrackReply(403, u"Spotify: Player command failed: Premium required"_s));
 }
 
 void TestApiPolicy::systemicPlayFailures_data()

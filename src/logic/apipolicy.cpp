@@ -141,6 +141,11 @@ bool isAlreadyPausedReply(int httpStatus, const QString &reason)
     return httpStatus == 403 && (reason == "UNKNOWN"_L1 || reason == "ALREADY_PAUSED"_L1);
 }
 
+bool isRestrictedTrackReply(int httpStatus, const QString &message)
+{
+    return httpStatus == 403 && message.contains("Restriction violated"_L1, Qt::CaseInsensitive);
+}
+
 bool isSystemicPlayFailure(int httpStatus, bool deviceProblem, const QString &reason)
 {
     // status 0: no network, or not logged in; 401 here means the session could not be refreshed

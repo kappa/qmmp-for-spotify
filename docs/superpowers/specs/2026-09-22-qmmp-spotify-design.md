@@ -84,6 +84,10 @@ plugin install location). The distro's older qmmp is not a target.
   - Sends at most 30 interactive requests in any rolling 10 s, and paces paged loads and
     link expansion to 20 per rolling 10 s on a separate budget (request budget, see below).
   - Logs every request to `api.log` next to the token file (see below).
+  - Playback commands (play, pause, resume, seek, queue, next, volume) time out after 5 s,
+    other requests after 15 s. `play` and `next` return a handle: a superseded start is
+    cancelled (not sent if it has not been yet, aborted if in flight; its callback does not
+    run), so a request stuck offline cannot reach the device later.
 - `SpotifyPoller` — polls `GET /me/player` (the only periodic request), emits
   `stateChanged(PlayerState)`. The schedule (`pollpolicy`) depends on whether qmmp is
   focused (`QGuiApplication::applicationState() == Qt::ApplicationActive`: any qmmp window
@@ -101,14 +105,15 @@ plugin install location). The distro's older qmmp is not a target.
     on fresh state). They replace the interval only when sooner; each fires at most once per
     track (again after a track change, or a restart or seek back of more than 2 s), and one
     less than 2 s away is skipped (a stalled progress must not repeat it);
-  - a successful poll with no playback (204) stops polling unless the engine is active;
+  - a successful poll with no playback (204) stops polling unless the engine is waiting for
+    a start (a device that has not started yet reports none);
   - failed polls retry after 2, 4, … 256 s; the 9th failure in a row stops polling with
     one notice "Spotify: lost connection, polling stopped";
   - stopped polling resumes on interaction: qmmp becoming focused or a Spotify dialog
-    opened, at most one poll per 5 s after the last one was sent (inside that window a
+    opened, at most one poll per 5 s after the last one (inside that window a
     trigger only brings a later poll forward to the current schedule, or, when polling had
     stopped, polls when the window ends). Command replies poll soon (`pollSoon()`, 300 ms
-    after the reply, but at most one poll per 2 s after the last poll was sent: a later
+    after the reply, but at most one poll per 2 s after the last poll: a later
     request is merged into one poll at the end of that window); one arriving while a poll
     is in flight polls again after it. During the
     error backoff `pollSoon()` never polls ahead of the backoff schedule (a failing queue
@@ -117,12 +122,17 @@ plugin install location). The distro's older qmmp is not a target.
     throttle. A 204-stop resumes on any of these; a hard fail only on interaction or a user
     playback command, with a fresh retry sequence — automatic engine requests (queueing,
     track ends) do not restart it.
+  The gaps count from the last poll's reply (from its sending while it is in flight), so a
+  slow reply is not followed by another poll moments later.
   Pauses while logged out. While requests are rate-limit blocked, the next poll is
-  scheduled 1 s after the block ends (`pollSoon()` does not shorten that); blocked polls
+  scheduled 1 s after the block ends and at least 2 s after the last poll (`pollSoon()`
+  does not shorten that); blocked polls
   and polls refused by the request budget are not failures.
 - `SpotifyLink` — parses `spotify://{track,album,playlist}/<id>`,
   `spotify:{track,album,playlist}:<id>` and `https://open.spotify.com/[intl-xx/]{track,album,playlist}/<id>[?…]`.
-  Canonical playlist path for a track: `spotify://track/<id>`.
+  Canonical playlist path for a track: `spotify://track/<id>`; a track not playable in the
+  user's country gets `spotify://track/<id>?unavailable`. Spotify IDs are 22 base62
+  characters; a link with another ID is broken.
 - Selected device id persisted in qmmp settings.
 
 `PlayerState`: device id, is_playing, track id, title, artists, album, duration,
@@ -167,7 +177,8 @@ progress, timestamp.
   the expansion: one tagged track for a track link, all tracks for album/playlist links.
   Raw links are visible briefly until expansion completes.
 - Tracks built for qmmp: path `spotify://track/<id>`, title, artist, album, track
-  number, duration. Local files, episodes and unavailable tracks are skipped.
+  number, duration. Local files and episodes are skipped; unavailable tracks are kept and
+  marked (see "Unavailable tracks" below).
 - Notices (not logged in, token expired, no device, API errors) are shown via a
   non-modal message, not repeated on every poll.
 
@@ -177,11 +188,12 @@ progress, timestamp.
 |---|---|
 | Not configured / not logged in | Menu actions and playback show "Spotify: log in in plugin settings". |
 | 401 | Refresh token, retry once. |
-| Refresh rejected (incl. 6-month refresh-token expiry) | Log out, notice "Spotify: please log in again". |
+| Refresh rejected (incl. 6-month refresh-token expiry) | Log out, notice "Spotify: please log in again" (see logout below). |
+| Logged out while qmmp plays or pauses a Spotify track | qmmp stops quietly (no pause request, no "not logged in"); one notice "Spotify: logged out. The device keeps playing." |
 | 429 | Block all Web API requests until `Retry-After` (missing → 30 s, at most 24 h); during a block of ≤ 10 s requests wait for its end, during a longer one they fail with one notice per block; poller waits for the block. |
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
-| Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. |
+| Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. A play or Next fails within 5 s (command timeout) and stops qmmp with the notice, no skip; a start superseded by a later start, a stop or a pause is aborted, so it cannot land after reconnecting. |
 | Request loop (safety net) | At most 30 interactive Web API requests in any rolling 10 s (token refreshes and bulk requests not counted). Paged loads and link expansion have their own pacing (20 per rolling 10 s) and wait, never refused. An interactive request over its budget is not sent: it fails with "Spotify: too many requests, pausing for 1 min" (one notice) and all interactive requests are held back for 60 s through the rate-limit gate; bulk requests wait the block out. |
 
 ## Testing
@@ -254,11 +266,15 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   not be played either; after network, login, rate-limit or server errors the link is kept
   (a track link still plays after login or reconnect). A playlist link answered with 403 or 404 shows "Spotify: this app can't read
   other users' playlists" (Development Mode apps cannot read playlists owned by others).
+  A link whose ID is not 22 base62 characters is removed without a request; it and a link
+  answered with 400 ("bad base62 URL") show "Spotify: cannot add this link".
 - While qmmp plays a track (not waiting for the device to start, not right after a
   pause/resume/seek, not near the track's end), a poll with no playback on the selected
   device (the device was closed, or playback moved to another device) turns qmmp to Paused
   with one notice "Spotify: playback stopped on <device name>". If the device later reports
-  the track playing again, qmmp follows it as usual.
+  the track playing again, qmmp follows it as usual. A poll with no playback inside the
+  pause/resume/seek grace is not trusted, and since polling stops on it, the engine polls
+  again when the grace ends.
 - Unavailable tracks are shown and skipped: loaded playlists, Liked Songs and expanded links
   keep tracks with `is_playable: false` (Spotify returns the flag without `market` too). A
   play failure that every track would hit (network, not logged in, 401 session expired, 429,
@@ -269,6 +285,20 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   it concerns the queue mechanism, not the track. If the failed play had cancelled a deferred pause (Next during
   playback, the next track after a finish), that pause comes back, so when qmmp stops the
   previous track does not keep playing on the device.
+- Unavailable tracks are marked: `is_playable: false` (missing: playable) gives the title
+  prefix "(unavailable) " and the path `spotify://track/<id>?unavailable`, which qmmp keeps
+  in its saved playlists. The engine reads the marker from the path: such a track fails at
+  once as `NormalError` without a request (qmmp skips it), it is never queued as the next
+  track, and when one follows a playing track the engine skips it at the track's end (if
+  qmmp then finds nothing playable, its stop pauses the device). Skipping an unavailable
+  track shows no notice, neither for a marked track nor when Spotify answers a play or queue
+  call with 403 "Restriction violated".
+- Logging out (in the settings, or a rejected refresh) stops the engine quietly: qmmp goes to
+  Stopped through a `FatalError` without a message, no pause is sent, and the one notice is
+  "Spotify: logged out. The device keeps playing." when qmmp was playing or paused a Spotify
+  track (otherwise the logout's own notice). A rejected refresh stops the engine before the
+  requests waiting for the token fail, so a play waiting there shows no "not logged in";
+  a pause that cannot be sent while logged out shows nothing either.
 - Rate-limit gate: any 429 blocks all Web API requests until now + `Retry-After` (missing or
   unparseable → 30 s; a block is extended, never shortened, but lasts at most 24 h). The block
   is kept in `ratelimit` next to the token file, so a restart does not hit a locked account

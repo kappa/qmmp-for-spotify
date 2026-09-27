@@ -14,6 +14,7 @@ private slots:
     void playerStateVolume();
     void playlists();
     void trackItemsKeepUnplayable();
+    void unavailableTitle();
     void album();
     void displayName();
     void userId();
@@ -110,7 +111,21 @@ void TestSpotifyJson::trackItemsKeepUnplayable()
     QCOMPARE(page.items.at(0).id, u"t1"_s);
     QCOMPARE(page.items.at(1).album, u"Y"_s);
     QCOMPARE(page.items.at(2).id, u"t3"_s);
+    QVERIFY(page.items.at(0).playable);
+    QVERIFY(!page.items.at(2).playable);
     QVERIFY(page.next.isEmpty());
+}
+
+void TestSpotifyJson::unavailableTitle()
+{
+    SpotifyTrack track;
+    track.id = u"t1"_s;
+    track.title = u"Jeva Nadhi"_s;
+    QCOMPARE(track.playlistTitle(), u"Jeva Nadhi"_s);
+    track.playable = false;
+    QCOMPARE(track.playlistTitle(), u"(unavailable) Jeva Nadhi"_s);
+    track.title.clear();
+    QCOMPARE(track.playlistTitle(), u"(unavailable) t1"_s);
 }
 
 void TestSpotifyJson::album()

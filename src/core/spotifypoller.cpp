@@ -130,6 +130,9 @@ void SpotifyPoller::poll()
         if(!self)
             return;
         self->m_inFlight = false;
+        // gaps between polls count from the reply: a replayed poll must not follow a slow one
+        // within moments
+        self->m_lastPollAt = QDateTime::currentMSecsSinceEpoch();
         if(result.ok)
         {
             self->m_failures = 0;
@@ -166,7 +169,7 @@ void SpotifyPoller::scheduleNext()
         return;
     if(m_api->isBlocked())
     {
-        arm(rateLimitedPollDelayMs(m_api->blockedUntil(), QDateTime::currentMSecsSinceEpoch()));
+        arm(rateLimitedPollDelayMs(m_api->blockedUntil(), m_lastPollAt, QDateTime::currentMSecsSinceEpoch()));
         return;
     }
     const PollPlan next = plan();
@@ -190,7 +193,6 @@ PollPlan SpotifyPoller::plan() const
 {
     PollInputs in;
     in.focused = m_focused;
-    in.engineActive = m_engineActive;
     in.engineAwaiting = m_engineAwaiting;
     in.awaitingSinceMs = m_awaitingSince;
     in.selectedPlaying = m_last.hasPlayback && m_last.isPlaying && m_last.deviceId == m_device;

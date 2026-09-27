@@ -4,6 +4,7 @@
 #include <qmmp/statehandler.h>
 #include <qmmp/trackinfo.h>
 #include "apipolicy.h"
+#include "spotifyauth.h"
 #include "spotifyclient.h"
 #include "spotifyengine.h"
 #include "spotifypoller.h"
@@ -24,6 +25,10 @@ SpotifyEngine::SpotifyEngine(QObject *parent)
         m_logic.updateState(state);
         publishTracks();
         m_volume.updateState(state);
+    });
+    connect(m_client, &SpotifyClient::sessionEnded, this, [this] {
+        m_logic.sessionEnded();
+        publishTracks();
     });
     connect(m_client, &SpotifyClient::deviceChanged, this, [this] {
         m_logic.setSelectedDevice(m_client->deviceId());
@@ -110,11 +115,13 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
 {
     QPointer<SpotifyEngine> self(this);
     SpotifyClient *client = m_client;
-    m_client->api()->play(m_client->deviceId(), { uri }, positionMs, [self, client, generation](const ApiResult &result) {
+    m_startRequest = m_client->api()->play(m_client->deviceId(), { uri }, positionMs, [self, client, generation](const ApiResult &result) {
         client->poller()->pollSoon();
         if(self && !result.ok)
         {
-            self->m_logic.playFailed(generation, result.message,
+            // a track not available in the user's country is skipped without a message
+            const bool restricted = isRestrictedTrackReply(result.status, result.message);
+            self->m_logic.playFailed(generation, restricted ? QString() : result.message,
                                      isSystemicPlayFailure(result.status, result.deviceProblem, result.reason));
             self->publishTracks();
         }
@@ -123,12 +130,13 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
 }
 
 // captures only the client: after a hand-over to another engine this engine is deleted
-// before the reply arrives
+// before the reply arrives. Logged out, the pause fails without being sent; the logout
+// notice already said the device keeps playing.
 void SpotifyEngine::apiPause()
 {
     SpotifyClient *client = m_client;
     m_client->api()->pause(m_client->deviceId(), [client](const ApiResult &result) {
-        if(!result.ok && !isAlreadyPausedReply(result.status, result.reason))
+        if(!result.ok && !isAlreadyPausedReply(result.status, result.reason) && client->auth()->hasCredentials())
             client->notify(result.message);
         client->poller()->pollSoon();
     });
@@ -151,7 +159,9 @@ void SpotifyEngine::apiQueue(const QString &uri)
     m_client->api()->queue(m_client->deviceId(), uri, [self, client](const ApiResult &result) {
         if(!result.ok)
         {
-            client->notify(result.message);
+            // the fallback play at the track's end skips an unavailable track quietly
+            if(!isRestrictedTrackReply(result.status, result.message))
+                client->notify(result.message);
             if(self)
                 self->m_logic.queueFailed();
         }
@@ -164,7 +174,7 @@ void SpotifyEngine::apiNext()
     QPointer<SpotifyEngine> self(this);
     SpotifyClient *client = m_client;
     const quint64 generation = m_logic.activeGeneration();
-    m_client->api()->next(m_client->deviceId(), [self, client, generation](const ApiResult &result) {
+    m_startRequest = m_client->api()->next(m_client->deviceId(), [self, client, generation](const ApiResult &result) {
         client->poller()->pollSoon();
         if(self && !result.ok)
         {
@@ -185,6 +195,22 @@ void SpotifyEngine::armStartTimeout()
         m_logic.checkStartTimeout();
         publishTracks();
     });
+}
+
+// the aborted reply's callback does not run; the generation check would drop it anyway
+void SpotifyEngine::cancelStartRequest()
+{
+    if(!m_startRequest)
+        return;
+    m_startRequest->cancel();
+    m_startRequest.reset();
+}
+
+// precise timers never fire early; the margin absorbs millisecond rounding of the clock
+void SpotifyEngine::pollAfter(qint64 delayMs)
+{
+    SpotifyPoller *poller = m_client->poller();
+    QTimer::singleShot(int(delayMs) + 50, Qt::PreciseTimer, poller, [poller] { poller->pollSoon(); });
 }
 
 void SpotifyEngine::suppressFollow(const QString &trackId)
@@ -260,7 +286,8 @@ void SpotifyEngine::reportFinished()
 
 void SpotifyEngine::reportError(const QString &message, bool fatal)
 {
-    m_client->notify(message);
+    if(!message.isEmpty())
+        m_client->notify(message);
     m_ticker.stop();
     StateHandler::instance()->dispatch(fatal ? Qmmp::FatalError : Qmmp::NormalError);
 }

@@ -30,23 +30,6 @@ Direction (2026-09-24):
   Autoplay may continue, qmmp follows it); for custom or edited playlists (track-by-track
   mode) qmmp pauses the device when its playlist ends.
 
-### Mark unavailable tracks in the playlist (wanted, 2026-09-26)
-
-Spotify returns `is_playable: false` (with `restrictions.reason`, e.g. `market`) for tracks
-that can't be played in Alex's country: 14 in "My India" (e.g. "Jeva Nadhi"), 30 in Liked
-Songs. The plugin ignores the flag and finds out only when playing fails.
-- Prefix the title of such tracks with `(unavailable) `, e.g. "(unavailable) Jeva Nadhi".
-- Possibly skip them without sending a play request (to decide at design time).
-- No message box when an unavailable track is skipped: today Spotify's 403 text
-  ("restriction violated") pops up even though qmmp skips to the next track
-  (Alex, 2026-09-26: "the message box is not needed").
-
-### Clear message for a broken link (wanted, 2026-09-26)
-
-Adding a malformed Spotify link (e.g. a mangled track ID) shows Spotify's raw error
-"bad base62 URL". Replace it with a plain message along the lines of
-"Spotify: cannot add this link" (Alex).
-
 ### No device selection: play on the current device (wanted, 2026-09-26)
 
 Replaces "follow playback to another device". Today qmmp targets one device chosen in the
@@ -67,32 +50,6 @@ Alex wants no device selection:
 
 Found by Alex in the manual session after B7/B8; details and log excerpts in
 `.superpowers/sdd/2026-09-22-qmmp-spotify/progress.md`.
-
-### "Nothing active" (204) does not stop polling while qmmp is Playing
-Web player closed while qmmp played: `GET /me/player` → 204 every 2 s, polling never
-stopped (the 204 stop is skipped while the engine is active, and the engine stays
-active).
-
-### Next while offline advances and "plays"; a stale play fires after reconnect
-Offline, Next moved to the next track and qmmp showed it playing; the error came only
-after the 15 s request timeout. Two plays were sent; a third went out when the first
-timed out (looks like a skip on a network error, which should stop). When the network
-returned, a pending play went through (09:59:12.37) and the new track played, although
-qmmp sent a pause 0.08 s later. Ideas: shorter timeout for playback commands (~5 s); a
-network error stops without skipping; drop/cancel a play superseded by a later command.
-
-### Duplicate polls ~0.4 s apart
-After the stop in the offline test, polls sometimes came in pairs ~0.4 s apart
-(two poll chains, or the in-flight replay flag).
-
-### Closing the web player tab while playing: unclear state, no notice
-Position stops, but qmmp doesn't clearly show Paused and no "playback stopped" notice
-appears. Superseded by "No device selection" if that lands first.
-
-### Logging out while playing leaves qmmp Playing
-After Log out, qmmp keeps Playing with the position running (device keeps playing); Stop
-then shows "not logged in". Logging out should stop qmmp's engine quietly (and maybe say
-the device keeps playing).
 
 ### Next then Previous before a poll leaves qmmp and the device apart
 Found by the B9 round-3 re-review (older bug, easier to hit with rapid Next/Previous).

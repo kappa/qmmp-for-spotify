@@ -5,6 +5,14 @@ using namespace Qt::StringLiterals;
 
 namespace {
 
+// marks the playlist path of a track that can't be played in the user's country
+constexpr auto kUnavailableMarker = "?unavailable"_L1;
+
+QString marker(bool unavailable)
+{
+    return unavailable ? QString(kUnavailableMarker) : QString();
+}
+
 QString kindName(SpotifyLink::Kind kind)
 {
     switch(kind)
@@ -34,20 +42,26 @@ QString SpotifyLink::uri() const
     return u"spotify:%1:%2"_s.arg(kindName(kind), id);
 }
 
-QString SpotifyLink::path() const
+bool SpotifyLink::hasValidId() const
 {
-    return u"spotify://%1/%2"_s.arg(kindName(kind), id);
+    static const QRegularExpression base62(u"^[A-Za-z0-9]{22}$"_s);
+    return isValid() && base62.match(id).hasMatch();
 }
 
-QString SpotifyLink::trackPath(const QString &id)
+QString SpotifyLink::path() const
 {
-    return u"spotify://track/"_s + id;
+    return u"spotify://%1/%2"_s.arg(kindName(kind), id) + marker(unavailable);
+}
+
+QString SpotifyLink::trackPath(const QString &id, bool playable)
+{
+    return u"spotify://track/"_s + id + marker(!playable);
 }
 
 SpotifyLink SpotifyLink::parse(const QString &text)
 {
     static const QRegularExpression patterns[] = {
-        QRegularExpression(u"^spotify://(track|album|playlist)/([A-Za-z0-9]+)/?$"_s),
+        QRegularExpression(u"^spotify://(track|album|playlist)/([A-Za-z0-9]+)/?(\\?unavailable)?$"_s),
         QRegularExpression(u"^spotify:(track|album|playlist):([A-Za-z0-9]+)$"_s),
         QRegularExpression(u"^https?://open\\.spotify\\.com/(?:intl-[A-Za-z-]+/)?(track|album|playlist)/([A-Za-z0-9]+)(?:[/?#].*)?$"_s),
     };
@@ -56,7 +70,7 @@ SpotifyLink SpotifyLink::parse(const QString &text)
     {
         const QRegularExpressionMatch match = pattern.match(trimmed);
         if(match.hasMatch())
-            return SpotifyLink { kindFromName(match.captured(1)), match.captured(2) };
+            return SpotifyLink { kindFromName(match.captured(1)), match.captured(2), !match.captured(3).isEmpty() };
     }
     return SpotifyLink();
 }

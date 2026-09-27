@@ -37,6 +37,8 @@ private:
     void reportError(const QString &message, bool fatal) override;
     void reportNotice(const QString &message) override;
     void scheduleStartFlush(qint64 delayMs) override;
+    void cancelStartRequest() override;
+    void pollAfter(qint64 delayMs) override;
     void apiSetVolume(int percent) override;
     void setQmmpVolume(int percent) override;
     void reportVolumeUnsupported() override;
@@ -54,6 +56,8 @@ private:
     QTimer m_volumeTimer;
     QTimer m_seekTimer;
     QTimer m_startTimer;
+    // the last play or skip to the queued track sent
+    ApiRequestHandle m_startRequest;
 };
 
 #endif

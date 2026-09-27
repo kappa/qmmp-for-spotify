@@ -39,8 +39,9 @@ PollPlan planNextPoll(const PollInputs &in)
         plan.delayMs = retryDelayMs(in.failures);
         return plan;
     }
-    // the engine polls through a 204: a device that has not started yet reports none
-    if(!in.hadPlayback && !in.engineActive)
+    // polling goes on through a 204 only while the engine waits for a start: a device that
+    // has not started yet reports none
+    if(!in.hadPlayback && !in.engineAwaiting)
         return plan;
     if(in.engineAwaiting && in.nowMs - in.awaitingSinceMs < kAwaitingFastMs)
     {
@@ -120,9 +121,10 @@ int interactionDelayMs(qint64 lastPollMs, qint64 nowMs, int remainingMs, int pol
     return policyDelayMs != kStopPolling && policyDelayMs < remainingMs ? policyDelayMs : kKeepTimer;
 }
 
-int rateLimitedPollDelayMs(qint64 blockedUntilMs, qint64 nowMs)
+int rateLimitedPollDelayMs(qint64 blockedUntilMs, qint64 lastPollMs, qint64 nowMs)
 {
-    // polls one second after the block ends, so the gate has surely opened
-    const qint64 delay = qMax(blockedUntilMs - nowMs, qint64(0)) + 1000;
+    // polls one second after the block ends, so the gate has surely opened, and not within
+    // 2 s of the last poll
+    const qint64 delay = qMax(qMax(blockedUntilMs - nowMs, qint64(0)) + 1000, lastPollMs + kConfirmGapMs - nowMs);
     return int(qMin(delay, qint64(std::numeric_limits<int>::max())));
 }

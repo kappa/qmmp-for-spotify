@@ -12,6 +12,8 @@ private slots:
     void rejects_data();
     void rejects();
     void formats();
+    void unavailableMarker();
+    void validatesIds();
 };
 
 void TestSpotifyLink::parse_data()
@@ -59,6 +61,28 @@ void TestSpotifyLink::formats()
     QCOMPARE(link.uri(), u"spotify:track:abc"_s);
     QCOMPARE(link.path(), u"spotify://track/abc"_s);
     QCOMPARE(SpotifyLink::trackPath(u"abc"_s), u"spotify://track/abc"_s);
+}
+
+void TestSpotifyLink::unavailableMarker()
+{
+    const QString path = SpotifyLink::trackPath(u"4uLU6hMCjMI75M1A2tKUQC"_s, false);
+    QCOMPARE(path, u"spotify://track/4uLU6hMCjMI75M1A2tKUQC?unavailable"_s);
+    const SpotifyLink link = SpotifyLink::parse(path);
+    QCOMPARE(int(link.kind), int(SpotifyLink::Track));
+    QCOMPARE(link.id, u"4uLU6hMCjMI75M1A2tKUQC"_s);
+    QVERIFY(link.unavailable);
+    QCOMPARE(link.path(), path);
+    QCOMPARE(link.uri(), u"spotify:track:4uLU6hMCjMI75M1A2tKUQC"_s);
+    QVERIFY(!SpotifyLink::parse(SpotifyLink::trackPath(u"4uLU6hMCjMI75M1A2tKUQC"_s)).unavailable);
+}
+
+void TestSpotifyLink::validatesIds()
+{
+    QVERIFY(SpotifyLink::parse(u"spotify:track:4uLU6hMCjMI75M1A2tKUQC"_s).hasValidId());
+    QVERIFY(SpotifyLink::parse(u"https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x"_s).hasValidId());
+    QVERIFY(!SpotifyLink::parse(u"spotify:track:4uLU6hMCjMI75M1A2tKUQ"_s).hasValidId());
+    QVERIFY(!SpotifyLink::parse(u"https://open.spotify.com/album/1DFixLWuPkv3KT3TnV35m3x"_s).hasValidId());
+    QVERIFY(!SpotifyLink().hasValidId());
 }
 
 QTEST_APPLESS_MAIN(TestSpotifyLink)

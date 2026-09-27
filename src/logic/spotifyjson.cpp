@@ -43,6 +43,7 @@ SpotifyTrack SpotifyJson::parseTrack(const QJsonObject &object, const QString &a
     track.album = object.contains("album"_L1) ? object.value("album"_L1).toObject().value("name"_L1).toString() : albumName;
     track.trackNumber = object.value("track_number"_L1).toInt();
     track.durationMs = qint64(object.value("duration_ms"_L1).toDouble());
+    track.playable = object.value("is_playable"_L1).toBool(true);
     return track;
 }
 

@@ -3,8 +3,10 @@
 
 #include <deque>
 #include <functional>
+#include <memory>
 #include <QElapsedTimer>
 #include <QObject>
+#include <QPointer>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -12,6 +14,7 @@
 #include "spotifytypes.h"
 
 class QNetworkAccessManager;
+class QNetworkReply;
 class SpotifyAuth;
 
 struct ApiResult
@@ -28,6 +31,22 @@ struct ApiResult
     bool budgetExceeded = false;
 };
 
+// a request that can be superseded: cancel() keeps it from being sent if it has not been
+// yet and aborts it if it is in flight; its callback does not run after that
+class ApiRequest
+{
+public:
+    void cancel();
+
+private:
+    friend class SpotifyApi;
+
+    bool m_cancelled = false;
+    QPointer<QNetworkReply> m_reply;
+};
+
+using ApiRequestHandle = std::shared_ptr<ApiRequest>;
+
 class SpotifyApi : public QObject
 {
     Q_OBJECT
@@ -42,12 +61,13 @@ public:
     void playerState(std::function<void(const ApiResult &, const PlayerState &)> callback);
     void displayName(std::function<void(const ApiResult &, const QString &)> callback);
     void userId(std::function<void(const ApiResult &, const QString &)> callback);
-    void play(const QString &deviceId, const QStringList &uris, qint64 positionMs, Callback callback);
+    // playback commands (play … setVolume) time out after 5 s, other requests after 15 s
+    ApiRequestHandle play(const QString &deviceId, const QStringList &uris, qint64 positionMs, Callback callback);
     void pause(const QString &deviceId, Callback callback);
     void resume(const QString &deviceId, Callback callback);
     void seek(const QString &deviceId, qint64 positionMs, Callback callback);
     void queue(const QString &deviceId, const QString &uri, Callback callback);
-    void next(const QString &deviceId, Callback callback);
+    ApiRequestHandle next(const QString &deviceId, Callback callback);
     void setVolume(const QString &deviceId, int percent, Callback callback);
     // paged loads (these four) and track() for link expansion are bulk requests: they wait for
     // a slot in the request budget instead of failing
@@ -71,13 +91,17 @@ signals:
     void budgetExceeded(const QString &message);
 
 private:
-    // bulk: one of many requests of a paged load or a link expansion; it waits for a free slot
-    // in its own budget instead of failing (woken: its turn came, it goes before the queue)
-    void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, bool retried = false,
-                 bool bulk = false, bool woken = false);
+    // Bulk: one of many requests of a paged load or a link expansion; it waits for a free slot
+    // in its own budget instead of failing. Command: a playback command, with a short timeout
+    // (a late one would act on a state qmmp has left)
+    enum class Kind { Query, Command, Bulk };
+
+    // woken: a bulk request whose turn came, it goes before the queue
+    void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, Kind kind = Kind::Query,
+                 ApiRequestHandle handle = nullptr, bool retried = false, bool woken = false);
     // true when the request was held or refused instead of sent
-    bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, bool retried,
-              bool bulk);
+    bool gate(const QByteArray &verb, const QUrl &url, const QByteArray &body, const Callback &callback, Kind kind,
+              const ApiRequestHandle &handle, bool retried);
     void refuseOverBudget(const QByteArray &verb, const QUrl &url, const Callback &callback);
     void waitForBulkSlot(std::function<void()> send, bool first);
     void scheduleBulkWake();

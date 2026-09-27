@@ -14,6 +14,7 @@ public:
     QString lastError;
     // the delay of the last scheduleStartFlush(); -1: none
     qint64 startFlushMs = -1;
+    int cancels = 0;
 
     void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) override
     {
@@ -40,6 +41,8 @@ public:
     }
     void reportNotice(const QString &message) override { calls << u"notice "_s + message; }
     void scheduleStartFlush(qint64 delayMs) override { startFlushMs = delayMs; }
+    void cancelStartRequest() override { cancels++; }
+    void pollAfter(qint64 delayMs) override { calls << u"poll after %1"_s.arg(delayMs); }
 };
 
 PlayerState deviceState(const QString &device, const QString &trackId, qint64 progressMs, bool isPlaying = true)
@@ -118,6 +121,11 @@ private slots:
     void skipToQueuedTrackTimesOut();
     void failureAfterStartSendsNoStalePause();
     void startTimeoutIgnoredOnceStarted();
+    void unavailableTrackFailsWithoutRequest();
+    void unavailableNextIsSkippedAtTrackEnd();
+    void supersededStartIsCancelled();
+    void logoutStopsQuietly();
+    void logoutDropsPendingPause();
 
 private:
     void startPlaying(const QString &trackId);
@@ -615,7 +623,7 @@ void TestEngineLogic::vanishedPlaybackIgnoredWhileAwaitingOrInGrace()
     m_sink.calls.clear();
     m_now += 2000;
     m_logic->updateState(PlayerState());
-    QVERIFY(m_sink.calls.isEmpty());
+    QCOMPARE(m_sink.calls, QStringList { u"poll after 500"_s });
     QCOMPARE(m_logic->state(), EngineState::Playing);
 }
 
@@ -911,6 +919,67 @@ void TestEngineLogic::failureAfterStartSendsNoStalePause()
     m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 300));
     m_logic->playFailed(m_sink.lastGeneration, u"late"_s, false);
     m_logic->stop();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
+}
+
+void TestEngineLogic::unavailableTrackFailsWithoutRequest()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a?unavailable"_s));
+    m_logic->play();
+    QCOMPARE(m_sink.calls, (QStringList { u"state Buffering"_s, u"error"_s }));
+    QVERIFY(m_sink.lastError.isEmpty());
+    QVERIFY(m_logic->trackIds().isEmpty());
+    QVERIFY(!m_logic->isAwaitingStart());
+}
+
+void TestEngineLogic::unavailableNextIsSkippedAtTrackEnd()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b?unavailable"_s));
+    m_now += 199000;
+    m_logic->tick();
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_sink.calls, (QStringList { u"finished"_s, u"state Stopped"_s, u"state Buffering"_s, u"error"_s }));
+    QVERIFY(m_sink.lastError.isEmpty());
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls.last(), u"pause"_s);
+}
+
+void TestEngineLogic::supersededStartIsCancelled()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    m_sink.cancels = 0;
+    m_logic->stop();
+    QCOMPARE(m_sink.cancels, 1);
+
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    m_sink.cancels = 0;
+    m_now += EngineLogic::kStartTimeoutMs;
+    m_logic->checkStartTimeout();
+    QCOMPARE(m_sink.cancels, 1);
+}
+
+void TestEngineLogic::logoutStopsQuietly()
+{
+    startPlaying(u"a"_s);
+    m_logic->sessionEnded();
+    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QVERIFY(m_sink.lastError.isEmpty());
+    m_logic->stop();
+    m_logic->flushPendingPause();
+    QCOMPARE(m_sink.calls, QStringList { u"fatal"_s });
+    QVERIFY(m_logic->trackIds().isEmpty());
+}
+
+void TestEngineLogic::logoutDropsPendingPause()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    m_logic->sessionEnded();
     m_logic->flushPendingPause();
     QVERIFY(!m_sink.calls.contains(u"pause"_s));
 }

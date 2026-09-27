@@ -105,6 +105,7 @@ void TestFollowerLogic::expansion()
     QVERIFY(needsExpansion(u"https://open.spotify.com/track/abc?si=1"_s, u"https://open.spotify.com/track/abc?si=1"_s));
     QVERIFY(needsExpansion(u"spotify://track/abc"_s, QString()));
     QVERIFY(!needsExpansion(u"spotify://track/abc"_s, u"Song"_s));
+    QVERIFY(!needsExpansion(u"spotify://track/abc?unavailable"_s, u"(unavailable) Song"_s));
     QVERIFY(!needsExpansion(u"/music/a.mp3"_s, QString()));
 }
 
@@ -117,6 +118,9 @@ void TestFollowerLogic::expansionFailureMessage()
              u"Spotify: network error: no response"_s);
     QCOMPARE(::expansionFailureMessage(u"spotify://album/abc"_s, 404, u"Spotify: Resource not found"_s),
              u"Spotify: Resource not found"_s);
+    const QString cannotAdd = u"Spotify: cannot add this link"_s;
+    QCOMPARE(::expansionFailureMessage(u"spotify:track:abc"_s, 400, u"Spotify: invalid id"_s), cannotAdd);
+    QCOMPARE(::expansionFailureMessage(u"https://open.spotify.com/playlist/abc"_s, 400, u"Spotify: bad base62 URL"_s), cannotAdd);
 }
 
 void TestFollowerLogic::removesOnlyLinksSpotifyRejects()

@@ -213,14 +213,16 @@ void SpotifyAuth::onFailed(bool sessionInvalid)
         m_listener->close();
     const bool wasLoggingIn = m_loggingIn;
     m_loggingIn = false;
-    finishWaiting(false);
-    if(wasLoggingIn)
-        emit loginFailed(u"Spotify login failed"_s);
-    else if(sessionInvalid && hasCredentials())
+    // before the requests waiting for the token fail: the engine stops quietly first, so a
+    // play waiting here does not report "not logged in"
+    if(!wasLoggingIn && sessionInvalid && hasCredentials())
     {
         clearCredentials();
         emit loggedOut(u"Spotify session expired, please log in again"_s);
     }
+    finishWaiting(false);
+    if(wasLoggingIn)
+        emit loginFailed(u"Spotify login failed"_s);
 }
 
 void SpotifyAuth::finishWaiting(bool ok)

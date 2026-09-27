@@ -6,11 +6,10 @@ using namespace Qt::StringLiterals;
 
 namespace {
 
-PollInputs inputs(bool focused, bool engineActive, bool selectedPlaying)
+PollInputs inputs(bool focused, bool selectedPlaying)
 {
     PollInputs in;
     in.focused = focused;
-    in.engineActive = engineActive;
     in.selectedPlaying = selectedPlaying;
     in.nowMs = 1000000;
     return in;
@@ -18,7 +17,7 @@ PollInputs inputs(bool focused, bool engineActive, bool selectedPlaying)
 
 PollInputs playing(bool focused, qint64 msToEnd)
 {
-    PollInputs in = inputs(focused, true, true);
+    PollInputs in = inputs(focused, true);
     in.predictedEndMs = in.nowMs + msToEnd;
     return in;
 }
@@ -39,32 +38,30 @@ private slots:
     void trackEndPollsFireOncePerTrack();
     void trackEndCycle();
     void predictedEndFromPoll();
-    void noPlaybackStopsUnlessEngineActive();
+    void noPlaybackStopsUnlessAwaiting();
     void errorsBackOffThenStop();
     void automaticPollKeepsBackoff();
     void confirmationPollsCoalesce();
+    void replayWaitsAfterSlowReply();
     void interactionThrottle();
     void waitsForRateLimitBlock();
 };
 
 void TestPollPolicy::focusedPlayingPolls5s()
 {
-    QCOMPARE(nextPollDelayMs(inputs(true, true, true)), 5000);
-    QCOMPARE(nextPollDelayMs(inputs(true, false, true)), 5000);
+    QCOMPARE(nextPollDelayMs(inputs(true, true)), 5000);
 }
 
 void TestPollPolicy::everythingElsePollsSlowly()
 {
-    QCOMPARE(nextPollDelayMs(inputs(true, false, false)), 60000);
-    QCOMPARE(nextPollDelayMs(inputs(true, true, false)), 60000);
-    QCOMPARE(nextPollDelayMs(inputs(false, false, false)), 60000);
-    QCOMPARE(nextPollDelayMs(inputs(false, true, false)), 60000);
-    QCOMPARE(nextPollDelayMs(inputs(false, true, true)), 60000);
+    QCOMPARE(nextPollDelayMs(inputs(true, false)), 60000);
+    QCOMPARE(nextPollDelayMs(inputs(false, false)), 60000);
+    QCOMPARE(nextPollDelayMs(inputs(false, true)), 60000);
 }
 
 void TestPollPolicy::awaitingEnginePollsFast()
 {
-    PollInputs in = inputs(false, true, false);
+    PollInputs in = inputs(false, false);
     in.engineAwaiting = true;
     in.awaitingSinceMs = in.nowMs - 19999;
     QCOMPARE(nextPollDelayMs(in), 2000);
@@ -184,23 +181,22 @@ void TestPollPolicy::predictedEndFromPoll()
     QCOMPARE(predictedTrackEndMs(PlayerState(), 1000000), 0);
 }
 
-void TestPollPolicy::noPlaybackStopsUnlessEngineActive()
+void TestPollPolicy::noPlaybackStopsUnlessAwaiting()
 {
-    PollInputs in = inputs(true, false, false);
+    PollInputs in = inputs(true, false);
     in.hadPlayback = false;
     QCOMPARE(nextPollDelayMs(in), kStopPolling);
     in.focused = false;
     QCOMPARE(nextPollDelayMs(in), kStopPolling);
 
-    in.engineActive = true;
-    QCOMPARE(nextPollDelayMs(in), 60000);
-    in.focused = true;
-    QCOMPARE(nextPollDelayMs(in), 60000);
+    in.engineAwaiting = true;
+    in.awaitingSinceMs = in.nowMs - 1000;
+    QCOMPARE(nextPollDelayMs(in), 2000);
 }
 
 void TestPollPolicy::errorsBackOffThenStop()
 {
-    PollInputs in = inputs(true, true, true);
+    PollInputs in = inputs(true, true);
     QList<int> delays;
     for(in.failures = 1; in.failures <= 8; in.failures++)
         delays << nextPollDelayMs(in);
@@ -211,7 +207,7 @@ void TestPollPolicy::errorsBackOffThenStop()
     QCOMPARE(nextPollDelayMs(in), kStopPolling);
     QVERIFY(isPollHardFail(9));
 
-    PollInputs idle = inputs(false, false, false);
+    PollInputs idle = inputs(false, false);
     idle.hadPlayback = false;
     idle.failures = 3;
     QCOMPARE(nextPollDelayMs(idle), 8000);
@@ -238,6 +234,14 @@ void TestPollPolicy::confirmationPollsCoalesce()
     QCOMPARE(pollSoonDelayMs(0, 300, 0, 1000000), kKeepTimer);
 }
 
+// the poller counts a poll from its reply: a poll answered after 1.8 s is not followed by
+// the replayed confirmation poll 0.3 s later
+void TestPollPolicy::replayWaitsAfterSlowReply()
+{
+    QCOMPARE(pollSoonDelayMs(0, -1, 1000000, 1000000), 2000);
+    QCOMPARE(pollSoonDelayMs(0, 2000, 1000000, 1000000), kKeepTimer);
+}
+
 void TestPollPolicy::interactionThrottle()
 {
     QCOMPARE(interactionDelayMs(0, 1000000, 60000, 2000), kPollSoonMs);
@@ -255,9 +259,10 @@ void TestPollPolicy::interactionThrottle()
 
 void TestPollPolicy::waitsForRateLimitBlock()
 {
-    QCOMPARE(rateLimitedPollDelayMs(1300000, 1000000), 301000);
-    QCOMPARE(rateLimitedPollDelayMs(1000000, 1300000), 1000);
-    QCOMPARE(rateLimitedPollDelayMs(Q_INT64_C(1) << 40, 0), std::numeric_limits<int>::max());
+    QCOMPARE(rateLimitedPollDelayMs(1300000, 0, 1000000), 301000);
+    QCOMPARE(rateLimitedPollDelayMs(1000000, 0, 1300000), 1000);
+    QCOMPARE(rateLimitedPollDelayMs(Q_INT64_C(1) << 40, 0, 0), std::numeric_limits<int>::max());
+    QCOMPARE(rateLimitedPollDelayMs(1000500, 999900, 1000000), 1900);
 }
 
 QTEST_APPLESS_MAIN(TestPollPolicy)

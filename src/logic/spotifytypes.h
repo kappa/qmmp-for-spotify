@@ -14,8 +14,16 @@ struct SpotifyTrack
     QString album;
     int trackNumber = 0;
     qint64 durationMs = 0;
+    // false: not playable in the user's country (is_playable)
+    bool playable = true;
 
     bool isValid() const { return !id.isEmpty(); }
+    // never empty: an empty title would make the link expander expand the track again and again
+    QString playlistTitle() const
+    {
+        const QString name = title.isEmpty() ? id : title;
+        return playable ? name : QStringLiteral("(unavailable) ") + name;
+    }
 };
 
 struct SpotifyDevice

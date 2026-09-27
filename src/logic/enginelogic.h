@@ -23,10 +23,16 @@ public:
     virtual void reportState(EngineState state) = 0;
     virtual void reportTrack(const QString &path, const SpotifyTrack &track) = 0;
     virtual void reportFinished() = 0;
+    // an empty message fails quietly (an unavailable track skipped, a logout)
     virtual void reportError(const QString &message, bool fatal) = 0;
     virtual void reportNotice(const QString &message) = 0;
     // a coalesced track start is due in delayMs: call flushStart() then
     virtual void scheduleStartFlush(qint64 delayMs) = 0;
+    // the last start request (play, skip to the queued track) is superseded: if it has not
+    // been answered, it must never reach the device (a request stuck offline)
+    virtual void cancelStartRequest() = 0;
+    // a poll in delayMs, also after polling stopped for "nothing active"
+    virtual void pollAfter(qint64 delayMs) = 0;
 };
 
 class EngineLogic
@@ -59,6 +65,8 @@ public:
     void queueFailed();
     void checkStartTimeout();
     void tick();
+    // logged out: qmmp stops without a request and without an error message
+    void sessionEnded();
 
     EngineState state() const { return m_state; }
     qint64 elapsed() const;
@@ -76,6 +84,8 @@ private:
         QString path;
         QString id;
         qint64 offsetMs = 0;
+        // not playable in the user's country: failed at once, without a request
+        bool unavailable = false;
 
         bool isEmpty() const { return id.isEmpty(); }
     };

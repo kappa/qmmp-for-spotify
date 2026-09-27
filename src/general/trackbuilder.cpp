@@ -6,10 +6,10 @@ using namespace Qt::StringLiterals;
 
 PlayListTrack *createPlayListTrack(const SpotifyTrack &track)
 {
-    TrackInfo info(SpotifyLink::trackPath(track.id));
+    // the engine reads the unavailable marker from the path and skips the track without a request
+    TrackInfo info(SpotifyLink::trackPath(track.id, track.playable));
     info.setDuration(track.durationMs);
-    // an empty title would make the link expander expand this track again and again
-    info.setValue(Qmmp::TITLE, track.title.isEmpty() ? track.id : track.title);
+    info.setValue(Qmmp::TITLE, track.playlistTitle());
     info.setValue(Qmmp::ARTIST, track.artists.join(u", "_s));
     info.setValue(Qmmp::ALBUM, track.album);
     if(track.trackNumber > 0)

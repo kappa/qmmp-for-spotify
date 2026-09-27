@@ -53,7 +53,10 @@ SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
         m_poller->setEnabled(false);
         // SpotifyApi drops its block on logout
         m_rateLimitNoticeUntil = 0;
-        notify(reason);
+        // the engine holds a track while qmmp plays or pauses one
+        const bool engineActive = !m_engineTrackIds.isEmpty();
+        emit sessionEnded();
+        notify(engineActive ? u"Spotify: logged out. The device keeps playing."_s : reason);
     });
     connect(m_auth, &SpotifyAuth::loginFailed, this, [this](const QString &message) { notify(message); });
     connect(m_api, &SpotifyApi::rateLimited, this, [this](const QString &message) { notify(message); });

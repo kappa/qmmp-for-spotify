@@ -9,8 +9,6 @@ struct PollInputs
 {
     // a qmmp window has the focus (the application is active)
     bool focused = true;
-    // qmmp's engine holds a Spotify track
-    bool engineActive = false;
     // the engine sent play/next and waits for the device to start; its start timeout needs polls
     bool engineAwaiting = false;
     // when the engine began waiting (continuously)
@@ -52,19 +50,21 @@ int nextPollDelayMs(const PollInputs &inputs);
 // track-end polls are due again
 bool startsTrackEndCycle(const QString &trackId, qint64 progressMs, const PlayerState &state);
 bool isPollHardFail(int failures);
+// lastPollMs below: when the last poll was answered, or sent while it is in flight; a slow
+// reply must not be followed by another poll moments later
 // how an automatic poll request (a command's reply, the engine becoming active) re-arms the
 // poll timer (remainingMs < 0: no timer), or kKeepTimer: soon, but at most one poll per 2 s
-// after the last one was sent (a later request is merged into the poll at the end of that
+// after the last one (a later request is merged into the poll at the end of that
 // window), and never ahead of the error backoff
 int pollSoonDelayMs(int failures, int remainingMs, qint64 lastPollMs, qint64 nowMs);
 // when the track in a successful poll ends if it keeps playing; 0 when nothing plays
 qint64 predictedTrackEndMs(const PlayerState &state, qint64 pollTimeMs);
 // how a focus, dialog or user-command trigger re-arms the poll timer (remainingMs < 0: no timer),
-// or kKeepTimer. It polls at most once per 5 s after the last poll was sent: inside that
+// or kKeepTimer. It polls at most once per 5 s after the last poll: inside that
 // window it only brings a later timer forward to policyDelayMs, or, when polling stopped,
 // polls when the window ends.
 int interactionDelayMs(qint64 lastPollMs, qint64 nowMs, int remainingMs, int policyDelayMs);
-// while requests are blocked the next poll waits for the block to end
-int rateLimitedPollDelayMs(qint64 blockedUntilMs, qint64 nowMs);
+// while requests are blocked the next poll waits for the block to end, and 2 s after the last poll
+int rateLimitedPollDelayMs(qint64 blockedUntilMs, qint64 lastPollMs, qint64 nowMs);
 
 #endif

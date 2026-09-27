@@ -40,6 +40,9 @@ bool needsExpansion(const QString &path, const QString &title)
 
 QString expansionFailureMessage(const QString &path, int httpStatus, const QString &apiMessage)
 {
+    // Spotify's own text ("bad base62 URL") says nothing to the user
+    if(httpStatus == 400)
+        return u"Spotify: cannot add this link"_s;
     if(SpotifyLink::parse(path).kind == SpotifyLink::Playlist && (httpStatus == 403 || httpStatus == 404))
         return u"Spotify: this app can't read other users' playlists"_s;
     return apiMessage;

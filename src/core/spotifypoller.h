@@ -57,6 +57,7 @@ private:
     // from the last successful poll; nothing stops before the first one
     bool m_hadPlayback = true;
     int m_failures = 0;
+    // when the last poll was sent, then when it was answered
     qint64 m_lastPollAt = 0;
     qint64 m_predictedEnd = 0;
     // what the armed timer's poll is: a track-end poll is marked done when it is sent

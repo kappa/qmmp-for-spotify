@@ -42,6 +42,8 @@ public:
 
 signals:
     void deviceChanged();
+    // logged out (in the settings, or the session expired): the engine stops without requests
+    void sessionEnded();
     void notice(const QString &message);
 
 private:

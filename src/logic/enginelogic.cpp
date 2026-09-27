@@ -38,7 +38,7 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
     if(link.kind != SpotifyLink::Track)
         return false;
 
-    const Entry entry { path, link.id, qMax<qint64>(0, offsetMs) };
+    const Entry entry { path, link.id, qMax<qint64>(0, offsetMs), link.unavailable };
     if(m_current.isEmpty())
     {
         m_current = entry;
@@ -51,6 +51,7 @@ bool EngineLogic::enqueue(const QString &path, qint64 offsetMs)
 
 void EngineLogic::play()
 {
+    m_sink->cancelStartRequest();
     // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
     m_cancelledPause = m_pendingPause;
     m_pendingPause = false;
@@ -89,6 +90,7 @@ void EngineLogic::pause()
         m_progressMs = elapsed();
         m_progressAt = m_clock();
         m_commandAt = m_clock();
+        m_sink->cancelStartRequest();
         m_sink->apiPause();
         setState(EngineState::Paused);
     }
@@ -150,6 +152,7 @@ void EngineLogic::stop()
     // the first one's restart candidate and pending pause
     if(m_current.isEmpty())
         return;
+    m_sink->cancelStartRequest();
     // m_state is our belief; m_last may predate a resume we just sent. A paused device is left alone (403).
     const bool active = m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack());
     m_pendingPause = active;
@@ -192,9 +195,13 @@ void EngineLogic::updateState(const PlayerState &state)
     {
         finish();
     }
-    else if(!onDevice && !m_awaiting && m_state == EngineState::Playing && !inCommandGrace())
+    else if(!onDevice && !m_awaiting && m_state == EngineState::Playing)
     {
-        deviceStopped();
+        if(!inCommandGrace())
+            deviceStopped();
+        // polling stops on "nothing active": look again when the poll can be trusted
+        else if(!state.hasPlayback)
+            m_sink->pollAfter(m_commandAt + kCommandGraceMs - m_clock());
     }
     // a poll may arrive inside the queue-lead window
     maybeQueueNext();
@@ -206,6 +213,7 @@ void EngineLogic::flushPendingPause()
     if(!m_pendingPause)
         return;
     m_pendingPause = false;
+    m_sink->cancelStartRequest();
     m_sink->apiPause();
 }
 
@@ -235,6 +243,16 @@ void EngineLogic::checkStartTimeout()
     if(systemic)
         m_startTimeouts = 0;
     fail(u"Spotify: the device did not start playing"_s, systemic);
+}
+
+// the device keeps playing: a pause could not be sent without a token anyway
+void EngineLogic::sessionEnded()
+{
+    m_pendingPause = false;
+    m_cancelledPause = false;
+    m_stoppedId.clear();
+    if(!m_current.isEmpty())
+        fail(QString(), true);
 }
 
 void EngineLogic::tick()
@@ -291,6 +309,12 @@ void EngineLogic::apply(const PlayerState &state)
 
 void EngineLogic::startOnDevice(qint64 positionMs)
 {
+    // qmmp skips it like a track Spotify refused, without the message
+    if(m_current.unavailable)
+    {
+        fail(QString(), false);
+        return;
+    }
     m_awaiting = true;
     m_skippingToQueued = false;
     m_activeGeneration = ++m_generation;
@@ -322,6 +346,7 @@ void EngineLogic::sendStart(qint64 positionMs)
 // sends it, so the previous track does not keep playing on the device.
 void EngineLogic::fail(const QString &message, bool systemic)
 {
+    m_sink->cancelStartRequest();
     m_pendingPause = m_cancelledPause;
     m_cancelledPause = false;
     m_current = Entry();
@@ -360,6 +385,10 @@ void EngineLogic::finish()
 {
     if(!m_next.isEmpty())
     {
+        // an unavailable next track was not queued: the device stops or moves on to Autoplay,
+        // and if qmmp finds nothing playable after it, its stop pauses the device
+        if(m_next.unavailable)
+            m_cancelledPause = m_last.hasPlayback && m_last.deviceId == m_device;
         const bool queued = m_nextQueue == Queue::Sent;
         switchToNext(!queued);
         if(queued)
@@ -395,7 +424,8 @@ void EngineLogic::deviceStopped()
 
 void EngineLogic::maybeQueueNext()
 {
-    if(m_state != EngineState::Playing || m_awaiting || m_next.isEmpty() || m_nextQueue != Queue::NotSent)
+    if(m_state != EngineState::Playing || m_awaiting || m_next.isEmpty() || m_next.unavailable
+            || m_nextQueue != Queue::NotSent)
         return;
     if(m_track.durationMs <= 0 || m_track.durationMs - elapsed() > kQueueLeadMs)
         return;

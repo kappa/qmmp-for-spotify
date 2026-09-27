@@ -1,3 +1,4 @@
+#include <QTimer>
 #include <qmmpui/playlistmanager.h>
 #include <qmmpui/playlistmodel.h>
 #include "apipolicy.h"
@@ -40,7 +41,15 @@ void LinkExpander::onTracksAdded(PlayListModel *model, const QList<PlayListTrack
         auto done = [guarded, track, rawPath](const ApiResult &result, const QList<SpotifyTrack> &expanded) {
             replace(guarded, track, rawPath, result, expanded);
         };
-        if(link.kind == SpotifyLink::Track)
+        // a broken ID is not sent: it fails like a link Spotify rejects (400), on the next
+        // event-loop turn since qmmp is still adding the tracks
+        if(!link.hasValidId())
+        {
+            ApiResult rejected;
+            rejected.status = 400;
+            QTimer::singleShot(0, model, [done, rejected] { done(rejected, {}); });
+        }
+        else if(link.kind == SpotifyLink::Track)
             api->track(link.id, [done](const ApiResult &result, const SpotifyTrack &expanded) {
                 done(result, expanded.isValid() ? QList<SpotifyTrack> { expanded } : QList<SpotifyTrack>());
             });
