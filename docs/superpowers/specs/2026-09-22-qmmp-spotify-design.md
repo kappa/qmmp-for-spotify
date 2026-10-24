@@ -34,7 +34,7 @@ the reference for a clean open-source client.
 ## Architecture
 
 One out-of-tree CMake project producing a shared library and three qmmp plugins.
-Qt 6 (Widgets, Network, NetworkAuth). Targets qmmp 2.4.2 (latest), built from
+Qt ≥ 6.9 (Widgets, Network, NetworkAuth). Targets qmmp 2.4.2 (latest), built from
 source by the user; our project finds it via pkg-config (`qmmp`, `qmmpui`, e.g. with
 `PKG_CONFIG_PATH` pointing at its install prefix; the `plugindir` variable gives the
 plugin install location). The distro's older qmmp is not a target.

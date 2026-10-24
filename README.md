@@ -12,7 +12,7 @@ Audio is played by the selected device, not by qmmp. For audio on this machine, 
 - Spotify Premium.
 - Your own Spotify app: create one at https://developer.spotify.com/dashboard (Web API), add the redirect URI
   `http://127.0.0.1:8898/callback`, copy the client ID. New apps are limited to 5 users by Spotify.
-- qmmp 2.4, Qt 6 with NetworkAuth (`qt6-qtbase-devel`, `qt6-qtnetworkauth-devel`), CMake ≥ 3.18.
+- qmmp 2.4, Qt ≥ 6.9 with NetworkAuth (`qt6-qtbase-devel`, `qt6-qtnetworkauth-devel`), CMake ≥ 3.18.
 
 ## Build and install
 
