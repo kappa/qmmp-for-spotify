@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Network NetworkAuth Widgets Test)
+find_package(Qt6 6.9 REQUIRED COMPONENTS Core Gui Network NetworkAuth Widgets Test)
 
 enable_testing()
 add_subdirectory(src/logic)
