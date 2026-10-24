@@ -51,12 +51,6 @@ Alex wants no device selection:
 Found by Alex in the manual session after B7/B8; details and log excerpts in
 `.superpowers/sdd/2026-09-22-qmmp-spotify/progress.md`.
 
-### A poll can end the wait while a coalesced start is still pending
-B9 round-3 re-review, Minor 1. If a skip-to-queued is pending and the device reaches that
-track by itself, the pending skip is still sent and jumps past it (qmmp shows one track,
-the device plays another). Needs the track to end within 1 s of the start; rare. Fix: drop
-a pending skip in `apply()`, or don't let a poll end the wait while a start is pending.
-
 ### Start coalescing resets with each engine
 B9 round-3 re-review, Minor 2. qmmp deletes the Spotify engine when switching to a local
 file, so a held Next over a playlist alternating Spotify and local items isn't throttled

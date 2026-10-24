@@ -99,6 +99,8 @@ private slots:
     void rapidStartsCoalesce();
     void pendingStartDroppedOnStop();
     void previousBeforePollStartsTrackAgain();
+    void pendingSkipDroppedWhenDeviceReachesQueuedTrack();
+    void pollDuringPendingPlayKeepsWaiting();
     void skimmingStaysUnderBudget();
     void heldNextKeyStaysUnderBudget();
     void systemicFailureStops();
@@ -379,6 +381,45 @@ void TestEngineLogic::previousBeforePollStartsTrackAgain()
     m_now += 800;
     m_logic->flushStart();
     QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 1);
+}
+
+// a's start at a large offset ends within 1 s, so the skip to the queued b is held back; the
+// device moves on to b by itself, and the held skip must not jump past it
+void TestEngineLogic::pendingSkipDroppedWhenDeviceReachesQueuedTrack()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s, 199000));
+    m_logic->play();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 100;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 199100));
+    QVERIFY(m_sink.calls.contains(u"queue spotify:track:b"_s));
+    m_now += 200;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_logic->trackIds(), QStringList { u"b"_s });
+    QVERIFY(!m_sink.calls.contains(u"next"_s));
+    m_now += 200;
+    m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 200));
+    m_now += 500;
+    m_logic->flushStart();
+    QVERIFY(!m_sink.calls.contains(u"next"_s));
+    QCOMPARE(m_logic->state(), EngineState::Playing);
+    QVERIFY(!m_logic->isAwaitingStart());
+}
+
+// a poll that shows the current track while its play is held back may predate the play
+// (here two restarts): it must not end the wait, the held play still goes out
+void TestEngineLogic::pollDuringPendingPlayKeepsWaiting()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"a"_s);
+    m_now += 200;
+    clickNext(u"a"_s);
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 5000));
+    QVERIFY(m_logic->isAwaitingStart());
+    QCOMPARE(m_logic->state(), EngineState::Buffering);
+    m_now += 800;
+    m_logic->flushStart();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 2);
 }
 
 // Next clicks every clickGapMs; each play's reply (150 ms later) asks for a confirmation poll,

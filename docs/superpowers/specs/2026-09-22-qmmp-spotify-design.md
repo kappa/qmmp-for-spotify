@@ -342,7 +342,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   at once, later ones within 1 s replace each other and the latest is sent when the 1 s ends,
   so a held Next key sends about one play per second; qmmp's track and state switch at once,
   and the start timeout counts from the request actually sent. A pending start is dropped
-  when qmmp stops, fails or the track changes. With the 2 s confirmation-poll gap, skimming
+  when qmmp stops, fails or the track changes. While a play is pending, a poll showing its
+  track does not end the wait (the poll may predate the play); a pending skip to the queued
+  track is dropped when a poll shows the device already reached that track. With the 2 s confirmation-poll gap, skimming
   (15 Next clicks in 10 s) or a held Next key stays at about 15 interactive requests per
   10 s, well under the budget.
 - Seeks are coalesced like volume: the engine sends one seek 300 ms after the last of a burst

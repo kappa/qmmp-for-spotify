@@ -186,7 +186,8 @@ void EngineLogic::updateState(const PlayerState &state)
     {
         if(!m_awaiting && m_state == EngineState::Playing && !state.isPlaying && state.progressMs < kRewoundMs && nearEnd())
             finish();
-        else
+        // the poll may predate a held play: only polls after it is sent can confirm it
+        else if(!m_startPending || m_skippingToQueued)
             apply(state);
     }
     else if(onDevice && !m_next.isEmpty() && state.track.id == m_next.id)
@@ -294,6 +295,8 @@ void EngineLogic::setState(EngineState state)
 void EngineLogic::apply(const PlayerState &state)
 {
     m_awaiting = false;
+    // the device reached the queued track by itself: a held skip would jump past it
+    m_startPending = false;
     m_cancelledPause = false;
     m_startTimeouts = 0;
     m_track = state.track;
