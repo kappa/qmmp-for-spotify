@@ -12,10 +12,9 @@
 using namespace Qt::StringLiterals;
 
 SpotifyEngine::SpotifyEngine(QObject *parent)
-    : AbstractEngine(parent), m_client(SpotifyClient::instance()), m_logic(this, [this] { return m_clock.elapsed(); }),
-      m_volume(this, [this] { return m_clock.elapsed(); })
+    : AbstractEngine(parent), m_client(SpotifyClient::instance()), m_logic(this, [this] { return m_client->clockMs(); }),
+      m_volume(this, [this] { return m_client->clockMs(); })
 {
-    m_clock.start();
     m_logic.setSelectedDevice(m_client->deviceId());
     m_logic.updateState(m_client->poller()->lastState());
     m_volume.setSelectedDevice(m_client->deviceId());
@@ -204,6 +203,16 @@ void SpotifyEngine::cancelStartRequest()
         return;
     m_startRequest->cancel();
     m_startRequest.reset();
+}
+
+qint64 SpotifyEngine::lastStartSentAt() const
+{
+    return m_client->lastStartSentAt();
+}
+
+void SpotifyEngine::setLastStartSentAt(qint64 at)
+{
+    m_client->setLastStartSentAt(at);
 }
 
 // precise timers never fire early; the margin absorbs millisecond rounding of the clock

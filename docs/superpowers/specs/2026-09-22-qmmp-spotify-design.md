@@ -340,7 +340,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   At most 50 requests per 10 s in total, and only while a load runs.
 - Track starts are coalesced: the first play (or skip to the queued track) of a burst goes out
   at once, later ones within 1 s replace each other and the latest is sent when the 1 s ends,
-  so a held Next key sends about one play per second; qmmp's track and state switch at once,
+  so a held Next key sends about one play per second, also across the engine instances qmmp
+  creates for a playlist mixing Spotify and local items (the time of the last start sent is
+  kept on `SpotifyClient`); qmmp's track and state switch at once,
   and the start timeout counts from the request actually sent. A pending start is dropped
   when qmmp stops, fails or the track changes. While a play is pending, a poll showing its
   track does not end the wait (the poll may predate the play); a pending skip to the queued

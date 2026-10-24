@@ -131,7 +131,8 @@ void EngineLogic::flushStart()
 {
     if(!m_startPending)
         return;
-    const qint64 wait = m_startSentAt < 0 ? 0 : m_startSentAt + kStartGapMs - m_clock();
+    const qint64 sentAt = m_sink->lastStartSentAt();
+    const qint64 wait = sentAt < 0 ? 0 : sentAt + kStartGapMs - m_clock();
     if(wait > 0)
     {
         // early: the pending start must not be lost
@@ -139,7 +140,7 @@ void EngineLogic::flushStart()
         return;
     }
     m_startPending = false;
-    m_startSentAt = m_clock();
+    m_sink->setLastStartSentAt(m_clock());
     // the start timeout counts from the request actually sent
     m_playSentAt = m_clock();
     if(m_skippingToQueued)

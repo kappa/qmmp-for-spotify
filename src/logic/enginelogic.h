@@ -31,6 +31,10 @@ public:
     // the last start request (play, skip to the queued track) is superseded: if it has not
     // been answered, it must never reach the device (a request stuck offline)
     virtual void cancelStartRequest() = 0;
+    // when the last track start was sent, by any engine (-1: never): qmmp deletes the engine
+    // for each non-Spotify item, and the start gap must hold across those switches
+    virtual qint64 lastStartSentAt() const = 0;
+    virtual void setLastStartSentAt(qint64 at) = 0;
     // a poll in delayMs, also after polling stopped for "nothing active"
     virtual void pollAfter(qint64 delayMs) = 0;
 };
@@ -125,7 +129,6 @@ private:
     // the coalesced track start (play from m_pendingStartMs, or the skip to the queued track)
     bool m_startPending = false;
     qint64 m_pendingStartMs = 0;
-    qint64 m_startSentAt = -1;
     bool m_pendingPause = false;
     // the pause play() cancelled, restored if that play fails
     bool m_cancelledPause = false;

@@ -51,12 +51,6 @@ Alex wants no device selection:
 Found by Alex in the manual session after B7/B8; details and log excerpts in
 `.superpowers/sdd/2026-09-22-qmmp-spotify/progress.md`.
 
-### Start coalescing resets with each engine
-B9 round-3 re-review, Minor 2. qmmp deletes the Spotify engine when switching to a local
-file, so a held Next over a playlist alternating Spotify and local items isn't throttled
-and can trip the 60 s block (then Next stops qmmp). Fix: keep the last-start time on
-`SpotifyClient`.
-
 ### Leftovers from the B10 review
 - 403 "Restriction violated" is now always a silent skip; if Spotify uses it for a
   device-level restriction, qmmp could walk a whole playlist silently (~1 play/s).
