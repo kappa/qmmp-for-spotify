@@ -96,7 +96,7 @@ shuffle often: this gets its own manual test scenario (below).
 - **SpotifyApi**: `playContext(device, contextUri, offsetUri, positionMs)`,
   `playUris(device, uris, offsetUri, positionMs)`, `setShuffle(device, bool)`,
   `setRepeat(device, mode)`. `PlayerState` gains `contextUri`, `contextType`, `shuffle`,
-  `repeat`. The existing budgets, rate-limit gate, 5 s command timeout and start
+  `repeat`. The existing budgets, rate-limit gate, 8 s start timeout of play requests and start
   coalescing apply unchanged.
 - **Binding store** (general plugin): bind on load, detach on structural change, persist,
   rename, menu line.

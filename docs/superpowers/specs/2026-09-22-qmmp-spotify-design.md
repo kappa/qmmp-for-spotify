@@ -84,8 +84,9 @@ plugin install location). The distro's older qmmp is not a target.
   - Sends at most 30 interactive requests in any rolling 10 s, and paces paged loads and
     link expansion to 20 per rolling 10 s on a separate budget (request budget, see below).
   - Logs every request to `api.log` next to the token file (see below).
-  - Playback commands (play, pause, resume, seek, queue, next, volume) time out after 5 s,
-    other requests after 15 s. `play` and `next` return a handle: a superseded start is
+  - Track starts (play, next) time out after 8 s (a waking device such as a phone answers
+    slowly), other playback commands (pause, resume, seek, queue, volume) after 5 s, other
+    requests after 15 s. `play` and `next` return a handle: a superseded start is
     cancelled (not sent if it has not been yet, aborted if in flight; its callback does not
     run), so a request stuck offline cannot reach the device later.
 - `SpotifyPoller` — polls `GET /me/player` (the only periodic request), emits
@@ -169,7 +170,8 @@ progress, timestamp.
 - **Follower**: on a change of the device's track or play state (when `stateChanged`
   fires for the selected device), if the track differs from what qmmp is playing
   (including qmmp stopped while the device plays): find `spotify://track/<id>` in the
-  current playlist, else append it (with metadata); make it current and start playback.
+  current playlist (also when it is marked `?unavailable`, see below), else append it
+  (with metadata); make it current and start playback.
   The engine adopts, so the device is not restarted. Events for other devices are ignored.
 - **Link expansion**: connected to `tracksAdded` of every playlist
   (`PlayListManager` signals for new playlists). Each added track whose path parses as
@@ -193,7 +195,7 @@ progress, timestamp.
 | 429 | Block all Web API requests until `Retry-After` (missing → 30 s, at most 24 h); during a block of ≤ 10 s requests wait for its end, during a longer one they fail with one notice per block; poller waits for the block. |
 | 404 / `NO_ACTIVE_DEVICE` | Engine error; notice suggests picking a device. |
 | 403 (e.g. not Premium) | Show Spotify's message. |
-| Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. A play or Next fails within 5 s (command timeout) and stops qmmp with the notice, no skip; a start superseded by a later start, a stop or a pause is aborted, so it cannot land after reconnecting. |
+| Network down | Poller retries after 2 … 256 s (command replies do not shorten that), then stops with one notice until the next interaction; no error spam. The engine sends the next track's queue call once; at the track end it makes one fallback attempt (skip or play), which stops qmmp with a notice when it fails. A play or Next fails within 8 s (start timeout) and stops qmmp with the notice, no skip; a start superseded by a later start, a stop or a pause is aborted, so it cannot land after reconnecting. |
 | Request loop (safety net) | At most 30 interactive Web API requests in any rolling 10 s (token refreshes and bulk requests not counted). Paged loads and link expansion have their own pacing (20 per rolling 10 s) and wait, never refused. An interactive request over its budget is not sent: it fails with "Spotify: too many requests, pausing for 1 min" (one notice) and all interactive requests are held back for 60 s through the rate-limit gate; bulk requests wait the block out. |
 
 ## Testing
@@ -284,7 +286,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   consecutive failures. A failed skip to the already-queued next track is `FatalError`, since
   it concerns the queue mechanism, not the track. If the failed play had cancelled a deferred pause (Next during
   playback, the next track after a finish), that pause comes back, so when qmmp stops the
-  previous track does not keep playing on the device.
+  previous track does not keep playing on the device. That pause waits for qmmp's stop after
+  the error: a flush queued before the failure (by Next's stop or by the finish) does not
+  send it, so qmmp's play of the following track cancels it.
 - Unavailable tracks are marked: `is_playable: false` (missing: playable) gives the title
   prefix "(unavailable) " and the path `spotify://track/<id>?unavailable`, which qmmp keeps
   in its saved playlists. The engine reads the marker from the path: such a track fails at
@@ -298,7 +302,8 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   "Spotify: logged out. The device keeps playing." when qmmp was playing or paused a Spotify
   track (otherwise the logout's own notice). A rejected refresh stops the engine before the
   requests waiting for the token fail, so a play waiting there shows no "not logged in";
-  a pause that cannot be sent while logged out shows nothing either.
+  other commands (pause, resume, seek, queue, volume) that fail while logged out show
+  nothing either.
 - Rate-limit gate: any 429 blocks all Web API requests until now + `Retry-After` (missing or
   unparseable → 30 s; a block is extended, never shortened, but lasts at most 24 h). The block
   is kept in `ratelimit` next to the token file, so a restart does not hit a locked account
@@ -313,7 +318,8 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   `api.log` next to the token file (`<qmmp config dir>/spotify/api.log`, the CLI its own
   dir): local time with ms, verb, path and query, HTTP status (0 = network error), duration
   in ms, note (`retry`, `retry-after=<s>` with the seconds applied, `blocked` for a locally refused
-  request, `budget` for one refused by the request budget, or the network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
+  request, `budget` for one refused by the request budget, `cancelled` for one the plugin aborted
+  itself (a superseded start), or the network error). No headers, tokens or bodies. Mode 0600, rotated to `api.log.1` above
   5 MB. Each line is also sent to the `spotify.api` logging category (off by default;
   `QT_LOGGING_RULES="spotify.api=true"`).
 - Request budget: two separate budgets in `SpotifyApi`, next to the rate-limit gate, on a

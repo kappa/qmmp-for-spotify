@@ -23,6 +23,9 @@ namespace {
 const int kMaxPages = 200;
 const int kTransferTimeoutMs = 15000;
 const int kCommandTimeoutMs = 5000;
+// a waking device (a phone) can take longer to answer a start; still under the engine's
+// 10 s start timeout
+const int kStartTimeoutMs = 8000;
 // precise timers never fire early; the margin absorbs millisecond rounding of the clock
 const int kRetryMarginMs = 50;
 
@@ -234,7 +237,8 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
         networkRequest.setHeader(QNetworkRequest::ContentLengthHeader, body.size());
         if(!body.isEmpty())
             networkRequest.setHeader(QNetworkRequest::ContentTypeHeader, u"application/json"_s);
-        networkRequest.setTransferTimeout(kind == Kind::Command ? kCommandTimeoutMs : kTransferTimeoutMs);
+        const int timeoutMs = kind == Kind::Start ? kStartTimeoutMs : kind == Kind::Command ? kCommandTimeoutMs : kTransferTimeoutMs;
+        networkRequest.setTransferTimeout(timeoutMs);
         QElapsedTimer clock;
         clock.start();
         QNetworkReply *reply = m_network->sendCustomRequest(networkRequest, verb, body);
@@ -247,7 +251,7 @@ void SpotifyApi::request(const QByteArray &verb, const QUrl &url, const QByteArr
             const QString networkError = status == 0 ? reply->errorString() : QString();
             const QByteArray retryAfter = reply->rawHeader("Retry-After");
             logApiRequest(m_dataDir, verb, pathQuery(url), status, clock.elapsed(),
-                          apiLogNote(status, retryAfter, retried, networkError));
+                          apiLogNote(status, retryAfter, retried, networkError, handle && handle->m_cancelled));
             // aborted (or answered after being superseded): the result belongs to nobody
             if(handle && handle->m_cancelled)
                 return;
@@ -341,7 +345,7 @@ ApiRequestHandle SpotifyApi::play(const QString &deviceId, const QStringList &ur
     const QJsonObject body { { u"uris"_s, QJsonArray::fromStringList(uris) }, { u"position_ms"_s, positionMs } };
     const ApiRequestHandle handle = std::make_shared<ApiRequest>();
     request("PUT", endpoint(u"/me/player/play"_s, deviceQuery(deviceId)),
-            QJsonDocument(body).toJson(QJsonDocument::Compact), callback, Kind::Command, handle);
+            QJsonDocument(body).toJson(QJsonDocument::Compact), callback, Kind::Start, handle);
     return handle;
 }
 
@@ -372,7 +376,7 @@ void SpotifyApi::queue(const QString &deviceId, const QString &uri, Callback cal
 ApiRequestHandle SpotifyApi::next(const QString &deviceId, Callback callback)
 {
     const ApiRequestHandle handle = std::make_shared<ApiRequest>();
-    request("POST", endpoint(u"/me/player/next"_s, deviceQuery(deviceId)), QByteArray(), callback, Kind::Command, handle);
+    request("POST", endpoint(u"/me/player/next"_s, deviceQuery(deviceId)), QByteArray(), callback, Kind::Start, handle);
     return handle;
 }
 

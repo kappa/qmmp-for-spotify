@@ -24,7 +24,7 @@
 - Long runs: about **2.5 s before the predicted end of the portion's last track**, qmmp hands over the next portion, starting from its first track at position 0. No queueing is used.
 - Shuffle/repeat: `PUT /me/player/shuffle?state=` / `PUT /me/player/repeat?state=` (`off` / `context`; qmmp's "repeat track" → `track`). Both return **200 with a non-JSON body**: treat any 2xx as success, don't parse the body. Polled `shuffle_state` / `repeat_state` update qmmp's toggles without sending anything back.
 - Names and lines, verbatim: bound playlists are named `Spotify: <name>`; on detach `<name> (edited)`; the Tools → Spotify first line is `Playing as Spotify playlist: <name>` / `Plain list (not linked to Spotify)`. No notices (message boxes) on bind or detach.
-- Unchanged and must not regress: the rate-limit gate, the interactive (30 / rolling 10 s) and bulk (20 / rolling 10 s) request budgets, the 5 s timeout for playback commands (15 s for other requests), start coalescing (at most one start per 1 s, latest of a burst trailing), seek debounce 300 ms, abort of a superseded start, focus-based polling (5 s focused+playing, 60 s otherwise, polls ~5 s before and ~1.5 s after a predicted track end), bounded retries (nothing re-sends a request in a loop on failure).
+- Unchanged and must not regress: the rate-limit gate, the interactive (30 / rolling 10 s) and bulk (20 / rolling 10 s) request budgets, the 8 s timeout for track starts and 5 s for other playback commands (15 s for other requests), start coalescing (at most one start per 1 s, latest of a burst trailing), seek debounce 300 ms, abort of a superseded start, focus-based polling (5 s focused+playing, 60 s otherwise, polls ~5 s before and ~1.5 s after a predicted track end), bounded retries (nothing re-sends a request in a loop on failure).
 
 ## Review Focus
 
@@ -255,7 +255,7 @@ private section, after `void clearBlock();`:
     ApiRequestHandle startPlayback(const QString &deviceId, const QByteArray &body, Callback callback);
 ```
 
-Also update the comment above `play(...)` in the header to read: `// playback commands (play … setVolume, shuffle, repeat) time out after 5 s, other requests after 15 s`.
+Also update the comment above `play(...)` in the header to read: `// track starts (play, playContext, playUris, next) time out after 8 s, other playback commands (pause … setVolume, shuffle, repeat) after 5 s, other requests after 15 s`.
 
 `src/core/spotifyapi.cpp`, after `SpotifyApi::play(...)`:
 
@@ -263,7 +263,7 @@ Also update the comment above `play(...)` in the header to read: `// playback co
 ApiRequestHandle SpotifyApi::startPlayback(const QString &deviceId, const QByteArray &body, Callback callback)
 {
     const ApiRequestHandle handle = std::make_shared<ApiRequest>();
-    request("PUT", endpoint(u"/me/player/play"_s, deviceQuery(deviceId)), body, callback, Kind::Command, handle);
+    request("PUT", endpoint(u"/me/player/play"_s, deviceQuery(deviceId)), body, callback, Kind::Start, handle);
     return handle;
 }
 
@@ -745,7 +745,7 @@ The engine starts a hand-off (one request) instead of a single track. While the 
 
 **Where the B7–B10 invariants hold after the removal:**
 
-- *Rate-limit gate, budgets, command timeout:* every start goes through `SpotifyApi::playContext`/`playUris` → `request(..., Kind::Command, handle)`, the same gate, interactive budget and 5 s timeout as the old `play`. Nothing bypasses `request()`.
+- *Rate-limit gate, budgets, command timeout:* every start goes through `SpotifyApi::playContext`/`playUris` → `request(..., Kind::Start, handle)`, the same gate, interactive budget and 8 s timeout as the old `play`. Nothing bypasses `request()`.
 - *Start coalescing:* every hand-off start goes through `sendStart` → `flushStart` with the unchanged 1 s gap. `skimmingStaysUnderBudget` and `heldNextKeyStaysUnderBudget` stay green.
 - *Superseded start aborted:* `cancelStartRequest()` is still called from `play/stop/pause/fail/flushPendingPause`. The glue keeps the handle of every `apiStart` in `m_startRequest`.
 - *Bounded retries / no loops:* the engine sends a start only for a qmmp `play()` (user, follower, qmmp skip), or once per `finish()`. `finish()` replaces `m_current` and sets awaiting, so later polls cannot repeat it (`qmmpNextStartsOnceWhenRunEnds`). Following sends nothing, because the follower's stop+play adopts (`followsHandOffWithoutRequests`). The queue-once rule is gone along with the queue.

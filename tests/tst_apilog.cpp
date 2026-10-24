@@ -25,6 +25,8 @@ void TestApiLog::notes()
     QCOMPARE(apiLogNote(429, QByteArray(), true, QString()), u"retry retry-after=30"_s);
     QCOMPARE(apiLogNote(204, QByteArray(), true, QString()), u"retry"_s);
     QCOMPARE(apiLogNote(0, QByteArray(), false, u"Host not found"_s), u"Host not found"_s);
+    // a request the plugin aborted itself (superseded) is not a network error
+    QCOMPARE(apiLogNote(0, QByteArray(), false, u"Operation canceled"_s, true), u"cancelled"_s);
 }
 
 QTEST_APPLESS_MAIN(TestApiLog)

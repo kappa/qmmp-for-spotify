@@ -11,10 +11,20 @@ FollowDecision decideFollow(const PlayerState &state, const QString &selectedDev
             || state.track.id == suppressedTrackId)
         return FollowDecision();
 
+    // the entry may carry the unavailable marker: availability can change after a load
     const QString path = SpotifyLink::trackPath(state.track.id);
-    int index = playlistPaths.indexOf(path, qMax(0, currentIndex + 1));
+    const QString markedPath = SpotifyLink::trackPath(state.track.id, false);
+    const auto find = [&](int from) {
+        for(int i = from; i < playlistPaths.size(); i++)
+        {
+            if(playlistPaths.at(i) == path || playlistPaths.at(i) == markedPath)
+                return i;
+        }
+        return -1;
+    };
+    int index = find(qMax(0, currentIndex + 1));
     if(index < 0)
-        index = playlistPaths.indexOf(path);
+        index = find(0);
     if(index >= 0)
         return FollowDecision { FollowDecision::Select, index };
     return FollowDecision { FollowDecision::Append, -1 };

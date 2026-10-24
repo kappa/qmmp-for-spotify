@@ -55,6 +55,7 @@ void EngineLogic::play()
     // a play in the same call stack as stop() (restart, Next) supersedes the pause stop() deferred
     m_cancelledPause = m_pendingPause;
     m_pendingPause = false;
+    m_pauseAwaitsStop = false;
     // a seek or a start not yet sent for the previous track is moot
     m_pendingSeekMs = -1;
     m_startPending = false;
@@ -150,6 +151,7 @@ void EngineLogic::stop()
 {
     // SoundCore::play() stops again after MediaPlayer::stop(); that second stop must not wipe
     // the first one's restart candidate and pending pause
+    m_pauseAwaitsStop = false;
     if(m_current.isEmpty())
         return;
     m_sink->cancelStartRequest();
@@ -210,7 +212,7 @@ void EngineLogic::updateState(const PlayerState &state)
 void EngineLogic::flushPendingPause()
 {
     m_stoppedId.clear();
-    if(!m_pendingPause)
+    if(!m_pendingPause || m_pauseAwaitsStop)
         return;
     m_pendingPause = false;
     m_sink->cancelStartRequest();
@@ -343,11 +345,13 @@ void EngineLogic::sendStart(qint64 positionMs)
 // a systemic failure (FatalError) stops qmmp; a track-specific one (NormalError) makes qmmp
 // skip to the next track, and qmmp itself stops after a whole playlist of failures. The
 // pause the failed play cancelled comes back: the next play cancels it again, qmmp's stop
-// sends it, so the previous track does not keep playing on the device.
+// sends it, so the previous track does not keep playing on the device. qmmp calls stop()
+// on either error, so the pause waits for that.
 void EngineLogic::fail(const QString &message, bool systemic)
 {
     m_sink->cancelStartRequest();
     m_pendingPause = m_cancelledPause;
+    m_pauseAwaitsStop = m_pendingPause;
     m_cancelledPause = false;
     m_current = Entry();
     m_pendingSeekMs = -1;
@@ -385,8 +389,8 @@ void EngineLogic::finish()
 {
     if(!m_next.isEmpty())
     {
-        // an unavailable next track was not queued: the device stops or moves on to Autoplay,
-        // and if qmmp finds nothing playable after it, its stop pauses the device
+        // an unavailable next track was not queued: the device stops or moves on to Autoplay;
+        // qmmp skips it, and if it then finds nothing playable, its stop pauses the device
         if(m_next.unavailable)
             m_cancelledPause = m_last.hasPlayback && m_last.deviceId == m_device;
         const bool queued = m_nextQueue == Queue::Sent;

@@ -11,6 +11,18 @@
 
 using namespace Qt::StringLiterals;
 
+namespace {
+
+// a command failed while waiting for the token when the session expired: the logout notice
+// already said the device keeps playing, so its "not logged in" is not shown after it
+void notifyFailure(SpotifyClient *client, const ApiResult &result)
+{
+    if(client->auth()->hasCredentials())
+        client->notify(result.message);
+}
+
+}
+
 SpotifyEngine::SpotifyEngine(QObject *parent)
     : AbstractEngine(parent), m_client(SpotifyClient::instance()), m_logic(this, [this] { return m_clock.elapsed(); }),
       m_volume(this, [this] { return m_clock.elapsed(); })
@@ -130,14 +142,13 @@ void SpotifyEngine::apiPlay(const QString &uri, qint64 positionMs, quint64 gener
 }
 
 // captures only the client: after a hand-over to another engine this engine is deleted
-// before the reply arrives. Logged out, the pause fails without being sent; the logout
-// notice already said the device keeps playing.
+// before the reply arrives. Logged out, the pause fails without being sent and quietly.
 void SpotifyEngine::apiPause()
 {
     SpotifyClient *client = m_client;
     m_client->api()->pause(m_client->deviceId(), [client](const ApiResult &result) {
-        if(!result.ok && !isAlreadyPausedReply(result.status, result.reason) && client->auth()->hasCredentials())
-            client->notify(result.message);
+        if(!result.ok && !isAlreadyPausedReply(result.status, result.reason))
+            notifyFailure(client, result);
         client->poller()->pollSoon();
     });
 }
@@ -161,7 +172,7 @@ void SpotifyEngine::apiQueue(const QString &uri)
         {
             // the fallback play at the track's end skips an unavailable track quietly
             if(!isRestrictedTrackReply(result.status, result.message))
-                client->notify(result.message);
+                notifyFailure(client, result);
             if(self)
                 self->m_logic.queueFailed();
         }
@@ -227,7 +238,7 @@ void SpotifyEngine::apiSetVolume(int percent)
             return;
         const bool disallowed = result.reason == "VOLUME_CONTROL_DISALLOW"_L1;
         if(!disallowed)
-            client->notify(result.message);
+            notifyFailure(client, result);
         if(self)
             self->m_volume.setVolumeFailed(disallowed);
     });
@@ -248,7 +259,7 @@ SpotifyApi::Callback SpotifyEngine::notifyOnFailure() const
     SpotifyClient *client = m_client;
     return [client](const ApiResult &result) {
         if(!result.ok)
-            client->notify(result.message);
+            notifyFailure(client, result);
         client->poller()->pollSoon();
     };
 }
