@@ -346,9 +346,9 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   and the start timeout counts from the request actually sent. A pending start is dropped
   when qmmp stops, fails or the track changes. While a play is pending, a poll showing its
   track does not end the wait (the poll may predate the play); a pending skip to the queued
-  track is dropped when a poll shows the device already reached that track. With the 2 s confirmation-poll gap, skimming
-  (15 Next clicks in 10 s) or a held Next key stays at about 15 interactive requests per
-  10 s, well under the budget.
+  track is dropped when a poll shows the device already reached that track. With the 2 s
+  confirmation-poll gap, skimming (15 Next clicks in 10 s) or a held Next key stays at about
+  15 interactive requests per 10 s, well under the budget.
 - Seeks are coalesced like volume: the engine sends one seek 300 ms after the last of a burst
   (a held key, a scrolled slider); the local position moves at once. A pending seek is
   dropped when the track changes or stops.
