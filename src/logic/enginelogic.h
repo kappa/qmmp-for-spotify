@@ -134,6 +134,9 @@ private:
     // the active command is the skip to the already-queued next track
     bool m_skippingToQueued = false;
     QString m_stoppedId;
+    // qmmp stopped while a start was unconfirmed: m_last may predate it, so the next play()
+    // must not adopt the track m_last shows (Next, then Previous before a poll)
+    bool m_stoppedAwaiting = false;
     quint64 m_generation = 0;
     quint64 m_activeGeneration = 0;
     qint64 m_playSentAt = 0;

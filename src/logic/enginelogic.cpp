@@ -60,6 +60,8 @@ void EngineLogic::play()
     m_startPending = false;
     const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
     m_stoppedId.clear();
+    const bool lastIsStale = m_stoppedAwaiting;
+    m_stoppedAwaiting = false;
     if(m_current.isEmpty())
         return;
     if(m_device.isEmpty())
@@ -72,7 +74,7 @@ void EngineLogic::play()
     m_trackReported = false;
     m_commandAt = -1;
     m_activeGeneration = 0;
-    if(!restart && m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
+    if(!restart && !lastIsStale && m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
     {
         apply(m_last);
         return;
@@ -157,6 +159,7 @@ void EngineLogic::stop()
     const bool active = m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack());
     m_pendingPause = active;
     m_stoppedId = m_current.id;
+    m_stoppedAwaiting = m_awaiting;
     m_activeGeneration = 0;
     m_current = Entry();
     m_pendingSeekMs = -1;

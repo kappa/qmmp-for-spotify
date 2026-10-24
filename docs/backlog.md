@@ -51,12 +51,6 @@ Alex wants no device selection:
 Found by Alex in the manual session after B7/B8; details and log excerpts in
 `.superpowers/sdd/2026-09-22-qmmp-spotify/progress.md`.
 
-### Next then Previous before a poll leaves qmmp and the device apart
-Found by the B9 round-3 re-review (older bug, easier to hit with rapid Next/Previous).
-`EngineLogic::play()` has a shortcut that trusts the last poll even when it is stale: A
-plays, Next sends B, Previous before any poll → qmmp shows A and sends nothing while the
-device plays B, until A's predicted end.
-
 ### A poll can end the wait while a coalesced start is still pending
 B9 round-3 re-review, Minor 1. If a skip-to-queued is pending and the device reaches that
 track by itself, the pending skip is still sent and jumps past it (qmmp shows one track,

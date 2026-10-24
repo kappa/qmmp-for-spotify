@@ -98,6 +98,7 @@ private slots:
     void pendingSeekDroppedOnStop();
     void rapidStartsCoalesce();
     void pendingStartDroppedOnStop();
+    void previousBeforePollStartsTrackAgain();
     void skimmingStaysUnderBudget();
     void heldNextKeyStaysUnderBudget();
     void systemicFailureStops();
@@ -363,6 +364,21 @@ void TestEngineLogic::pendingStartDroppedOnStop()
     m_now += 1000;
     m_logic->flushStart();
     QVERIFY(!m_sink.calls.contains(u"play spotify:track:c 0"_s));
+}
+
+// Next sends b, Previous comes before any poll: the last poll still shows a playing, but the
+// device is switching to b, so a must be started again rather than adopted
+void TestEngineLogic::previousBeforePollStartsTrackAgain()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"b"_s);
+    m_now += 200;
+    clickNext(u"a"_s);
+    QCOMPARE(m_logic->state(), EngineState::Buffering);
+    QVERIFY(m_logic->isAwaitingStart());
+    m_now += 800;
+    m_logic->flushStart();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 1);
 }
 
 // Next clicks every clickGapMs; each play's reply (150 ms later) asks for a confirmation poll,
