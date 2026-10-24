@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  QMMP_VERSION: 2.4.2
+  QMMP_SHA256: 8042f83a9ed810e170f7127e6eb53c6b29038dbf504a01c0867c19e5fd200e7d
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # Fedora ships the Qt NetworkAuth (>= 6.9) the auth code uses; Ubuntu 24.04 has 6.4.
+        image: ['fedora:43']
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc-c++ cmake ninja-build pkgconf-pkg-config tar bzip2 zstd \
+            qt6-qtbase-devel qt6-qtnetworkauth-devel qt6-qttools-devel qt6-linguist
+          echo "QMMP_PREFIX=$HOME/qmmp-$QMMP_VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Cache qmmp
+        id: qmmp-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.QMMP_PREFIX }}
+          key: qmmp-${{ env.QMMP_VERSION }}-${{ matrix.image }}-${{ runner.arch }}
+
+      # Distributions ship qmmp < 2.4, so build the libraries from the upstream release.
+      # Every optional plugin is switched off: the Spotify plugins only link libqmmp and libqmmpui.
+      - name: Build qmmp
+        if: steps.qmmp-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/qmmp.tar.bz2" \
+            "https://downloads.sourceforge.net/project/qmmp-dev/qmmp/${QMMP_VERSION%.*}/qmmp-${QMMP_VERSION}.tar.bz2"
+          echo "${QMMP_SHA256}  $RUNNER_TEMP/qmmp.tar.bz2" | sha256sum -c -
+          tar xjf "$RUNNER_TEMP/qmmp.tar.bz2" -C "$RUNNER_TEMP"
+          src="$RUNNER_TEMP/qmmp-${QMMP_VERSION}"
+          opts=$(grep -rhoE --include=CMakeLists.txt 'option\(USE_[A-Z0-9_]+' "$src" \
+            | sed 's/option(\(.*\)/-D\1=OFF/' | sort -u)
+          cmake -S "$src" -B "$RUNNER_TEMP/qmmp-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$QMMP_PREFIX" $opts
+          cmake --build "$RUNNER_TEMP/qmmp-build"
+          cmake --install "$RUNNER_TEMP/qmmp-build"
+
+      - name: Configure
+        run: |
+          export PKG_CONFIG_PATH="$QMMP_PREFIX/lib64/pkgconfig:$QMMP_PREFIX/lib/pkgconfig"
+          cmake -S . -B build
+          # CMakeLists.txt only warns without qmmp; a partial build must not pass.
+          if ! grep -q '^QMMP_FOUND:INTERNAL=1$' build/CMakeCache.txt; then
+            echo "::error::qmmp >= 2.4 was not found; the plugins were not configured"
+            exit 1
+          fi
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
