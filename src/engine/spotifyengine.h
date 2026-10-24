@@ -1,7 +1,6 @@
 #ifndef SPOTIFYENGINE_H
 #define SPOTIFYENGINE_H
 
-#include <QElapsedTimer>
 #include <QTimer>
 #include <qmmp/abstractengine.h>
 #include "enginelogic.h"
@@ -38,6 +37,8 @@ private:
     void reportNotice(const QString &message) override;
     void scheduleStartFlush(qint64 delayMs) override;
     void cancelStartRequest() override;
+    qint64 lastStartSentAt() const override;
+    void setLastStartSentAt(qint64 at) override;
     void pollAfter(qint64 delayMs) override;
     void apiSetVolume(int percent) override;
     void setQmmpVolume(int percent) override;
@@ -49,7 +50,6 @@ private:
     void scheduleVolumeSend();
 
     SpotifyClient *m_client;
-    QElapsedTimer m_clock;
     EngineLogic m_logic;
     QTimer m_ticker;
     VolumeLogic m_volume;

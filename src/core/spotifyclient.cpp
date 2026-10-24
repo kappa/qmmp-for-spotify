@@ -32,6 +32,7 @@ SpotifyClient *SpotifyClient::instance()
 
 SpotifyClient::SpotifyClient(QObject *parent) : QObject(parent)
 {
+    m_clock.start();
     m_auth = new SpotifyAuth(tokenFile(), this);
     m_auth->setClientId(clientId());
     m_auth->setPort(port());

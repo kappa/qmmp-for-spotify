@@ -15,6 +15,8 @@ public:
     // the delay of the last scheduleStartFlush(); -1: none
     qint64 startFlushMs = -1;
     int cancels = 0;
+    // shared by the engines, like SpotifyClient's
+    qint64 startSentAt = -1;
 
     void apiPlay(const QString &uri, qint64 positionMs, quint64 generation) override
     {
@@ -42,6 +44,8 @@ public:
     void reportNotice(const QString &message) override { calls << u"notice "_s + message; }
     void scheduleStartFlush(qint64 delayMs) override { startFlushMs = delayMs; }
     void cancelStartRequest() override { cancels++; }
+    qint64 lastStartSentAt() const override { return startSentAt; }
+    void setLastStartSentAt(qint64 at) override { startSentAt = at; }
     void pollAfter(qint64 delayMs) override { calls << u"poll after %1"_s.arg(delayMs); }
 };
 
@@ -98,6 +102,10 @@ private slots:
     void pendingSeekDroppedOnStop();
     void rapidStartsCoalesce();
     void pendingStartDroppedOnStop();
+    void previousBeforePollStartsTrackAgain();
+    void pendingSkipDroppedWhenDeviceReachesQueuedTrack();
+    void pollDuringPendingPlayKeepsWaiting();
+    void startGapSpansEngines();
     void skimmingStaysUnderBudget();
     void heldNextKeyStaysUnderBudget();
     void systemicFailureStops();
@@ -141,6 +149,7 @@ void TestEngineLogic::init()
 {
     m_now = 1000;
     m_sink.calls.clear();
+    m_sink.startSentAt = -1;
     m_logic = new EngineLogic(&m_sink, [this] { return m_now; });
     m_logic->setSelectedDevice(u"dev"_s);
 }
@@ -363,6 +372,81 @@ void TestEngineLogic::pendingStartDroppedOnStop()
     m_now += 1000;
     m_logic->flushStart();
     QVERIFY(!m_sink.calls.contains(u"play spotify:track:c 0"_s));
+}
+
+// Next sends b, Previous comes before any poll: the last poll still shows a playing, but the
+// device is switching to b, so a must be started again rather than adopted
+void TestEngineLogic::previousBeforePollStartsTrackAgain()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"b"_s);
+    m_now += 200;
+    clickNext(u"a"_s);
+    QCOMPARE(m_logic->state(), EngineState::Buffering);
+    QVERIFY(m_logic->isAwaitingStart());
+    m_now += 800;
+    m_logic->flushStart();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 1);
+}
+
+// a's start at a large offset ends within 1 s, so the skip to the queued b is held back; the
+// device moves on to b by itself, and the held skip must not jump past it
+void TestEngineLogic::pendingSkipDroppedWhenDeviceReachesQueuedTrack()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s, 199000));
+    m_logic->play();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_now += 100;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 199100));
+    QVERIFY(m_sink.calls.contains(u"queue spotify:track:b"_s));
+    m_now += 200;
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    QCOMPARE(m_logic->trackIds(), QStringList { u"b"_s });
+    QVERIFY(!m_sink.calls.contains(u"next"_s));
+    m_now += 200;
+    m_logic->updateState(deviceState(u"dev"_s, u"b"_s, 200));
+    m_now += 500;
+    m_logic->flushStart();
+    QVERIFY(!m_sink.calls.contains(u"next"_s));
+    QCOMPARE(m_logic->state(), EngineState::Playing);
+    QVERIFY(!m_logic->isAwaitingStart());
+}
+
+// a poll that shows the current track while its play is held back may predate the play
+// (here two restarts): it must not end the wait, the held play still goes out
+void TestEngineLogic::pollDuringPendingPlayKeepsWaiting()
+{
+    startPlaying(u"a"_s);
+    clickNext(u"a"_s);
+    m_now += 200;
+    clickNext(u"a"_s);
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 5000));
+    QVERIFY(m_logic->isAwaitingStart());
+    QCOMPARE(m_logic->state(), EngineState::Buffering);
+    m_now += 800;
+    m_logic->flushStart();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 2);
+}
+
+// qmmp deletes the engine for each non-Spotify item: a held Next over a playlist alternating
+// Spotify and local items must still send at most one start per kStartGapMs
+void TestEngineLogic::startGapSpansEngines()
+{
+    QVERIFY(m_logic->enqueue(u"spotify://track/a"_s));
+    m_logic->play();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:a 0"_s), 1);
+    m_logic->stop();
+    delete m_logic;
+    m_now += 300;
+    m_logic = new EngineLogic(&m_sink, [this] { return m_now; });
+    m_logic->setSelectedDevice(u"dev"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b"_s));
+    m_logic->play();
+    QVERIFY(!m_sink.calls.contains(u"play spotify:track:b 0"_s));
+    QCOMPARE(m_sink.startFlushMs, qint64(700));
+    m_now += 700;
+    m_logic->flushStart();
+    QCOMPARE(m_sink.calls.count(u"play spotify:track:b 0"_s), 1);
 }
 
 // Next clicks every clickGapMs; each play's reply (150 ms later) asks for a confirmation poll,

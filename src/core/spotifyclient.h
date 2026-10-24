@@ -1,6 +1,7 @@
 #ifndef SPOTIFYCLIENT_H
 #define SPOTIFYCLIENT_H
 
+#include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
 #include <QStringList>
@@ -33,6 +34,12 @@ public:
     // the engine paused this track when qmmp left Spotify; the follower must not return to it
     void setSuppressedTrack(const QString &id) { m_suppressedTrack = id; }
     QString suppressedTrack() const { return m_suppressedTrack; }
+    // one clock for every engine instance, so the times they keep here compare
+    qint64 clockMs() const { return m_clock.elapsed(); }
+    // when the last track start was sent (clockMs(), -1: never); kept here because qmmp
+    // deletes the engine for each non-Spotify item
+    qint64 lastStartSentAt() const { return m_lastStartSentAt; }
+    void setLastStartSentAt(qint64 at) { m_lastStartSentAt = at; }
 
     // true only on the first call in this process: the follower attaches to the device's
     // playback once at startup, not again when qmmp re-creates the plugin
@@ -55,6 +62,8 @@ private:
     QStringList m_engineTrackIds;
     bool m_engineAwaiting = false;
     QString m_suppressedTrack;
+    QElapsedTimer m_clock;
+    qint64 m_lastStartSentAt = -1;
     bool m_startupAttachTaken = false;
     QHash<QString, qint64> m_noticeTimes;
     qint64 m_rateLimitNoticeUntil = 0;

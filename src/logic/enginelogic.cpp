@@ -60,6 +60,8 @@ void EngineLogic::play()
     m_startPending = false;
     const bool restart = !m_current.isEmpty() && m_current.id == m_stoppedId;
     m_stoppedId.clear();
+    const bool lastIsStale = m_stoppedAwaiting;
+    m_stoppedAwaiting = false;
     if(m_current.isEmpty())
         return;
     if(m_device.isEmpty())
@@ -72,7 +74,7 @@ void EngineLogic::play()
     m_trackReported = false;
     m_commandAt = -1;
     m_activeGeneration = 0;
-    if(!restart && m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
+    if(!restart && !lastIsStale && m_current.offsetMs == 0 && deviceOnCurrentTrack() && m_last.isPlaying)
     {
         apply(m_last);
         return;
@@ -129,7 +131,8 @@ void EngineLogic::flushStart()
 {
     if(!m_startPending)
         return;
-    const qint64 wait = m_startSentAt < 0 ? 0 : m_startSentAt + kStartGapMs - m_clock();
+    const qint64 sentAt = m_sink->lastStartSentAt();
+    const qint64 wait = sentAt < 0 ? 0 : sentAt + kStartGapMs - m_clock();
     if(wait > 0)
     {
         // early: the pending start must not be lost
@@ -137,7 +140,7 @@ void EngineLogic::flushStart()
         return;
     }
     m_startPending = false;
-    m_startSentAt = m_clock();
+    m_sink->setLastStartSentAt(m_clock());
     // the start timeout counts from the request actually sent
     m_playSentAt = m_clock();
     if(m_skippingToQueued)
@@ -157,6 +160,7 @@ void EngineLogic::stop()
     const bool active = m_awaiting || (m_state == EngineState::Playing && deviceOnCurrentTrack());
     m_pendingPause = active;
     m_stoppedId = m_current.id;
+    m_stoppedAwaiting = m_awaiting;
     m_activeGeneration = 0;
     m_current = Entry();
     m_pendingSeekMs = -1;
@@ -183,7 +187,8 @@ void EngineLogic::updateState(const PlayerState &state)
     {
         if(!m_awaiting && m_state == EngineState::Playing && !state.isPlaying && state.progressMs < kRewoundMs && nearEnd())
             finish();
-        else
+        // the poll may predate a held play: only polls after it is sent can confirm it
+        else if(!m_startPending || m_skippingToQueued)
             apply(state);
     }
     else if(onDevice && !m_next.isEmpty() && state.track.id == m_next.id)
@@ -291,6 +296,8 @@ void EngineLogic::setState(EngineState state)
 void EngineLogic::apply(const PlayerState &state)
 {
     m_awaiting = false;
+    // the device reached the queued track by itself: a held skip would jump past it
+    m_startPending = false;
     m_cancelledPause = false;
     m_startTimeouts = 0;
     m_track = state.track;

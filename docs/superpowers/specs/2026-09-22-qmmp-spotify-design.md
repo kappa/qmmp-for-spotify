@@ -230,7 +230,7 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
 - On Qt 6.11 a rejected token refresh arrives only as requestFailed(ServerError); that logs the user out (a transient 5xx does too), network errors do not.
 - Play failures are split (superseded by the unavailable-tracks bullet below): systemic ones dispatch `FatalError`, so qmmp stops with the notice instead of trying every following track of the playlist (e.g. when logged out on a long playlist). Failures of a play that was already superseded or stopped are ignored.
 - If the device has not started the requested track 10 s after `play`, playback fails with "Spotify: the device did not start playing" (`NormalError`, qmmp skips to the next track). A second such timeout with no successful start in between is `FatalError`: qmmp stops with the same notice.
-- `stop()` defers its pause to the next event-loop turn; a `play()` in the same call stack (Next, Previous, double-click, restart) cancels it, so no pause/play race reaches the device. Replaying the track that was just stopped sends play from 0 instead of adopting the device's playback. Stop pauses whenever qmmp believes it is playing its track on the device; a paused device is left alone.
+- `stop()` defers its pause to the next event-loop turn; a `play()` in the same call stack (Next, Previous, double-click, restart) cancels it, so no pause/play race reaches the device. Replaying the track that was just stopped sends play from 0 instead of adopting the device's playback; so does a play after a stop that came before the previous start was confirmed (Next, then Previous before a poll), since the last poll may predate that start. Stop pauses whenever qmmp believes it is playing its track on the device; a paused device is left alone.
 - Loaded Spotify playlists are named "Spotify: <playlist name>"; only such playlists are reused and refilled.
 - A 429 with `Retry-After` above 10 s fails at once with "Spotify: rate limited, try again in N min" instead of waiting (superseded by the rate-limit gate bullet below).
 - Known limitation kept: Spotify queue items cannot be removed. Queuing late and skipping
@@ -340,11 +340,15 @@ Local audio decoding, being a Connect target, search, playlist editing, podcasts
   At most 50 requests per 10 s in total, and only while a load runs.
 - Track starts are coalesced: the first play (or skip to the queued track) of a burst goes out
   at once, later ones within 1 s replace each other and the latest is sent when the 1 s ends,
-  so a held Next key sends about one play per second; qmmp's track and state switch at once,
+  so a held Next key sends about one play per second, also across the engine instances qmmp
+  creates for a playlist mixing Spotify and local items (the time of the last start sent is
+  kept on `SpotifyClient`); qmmp's track and state switch at once,
   and the start timeout counts from the request actually sent. A pending start is dropped
-  when qmmp stops, fails or the track changes. With the 2 s confirmation-poll gap, skimming
-  (15 Next clicks in 10 s) or a held Next key stays at about 15 interactive requests per
-  10 s, well under the budget.
+  when qmmp stops, fails or the track changes. While a play is pending, a poll showing its
+  track does not end the wait (the poll may predate the play); a pending skip to the queued
+  track is dropped when a poll shows the device already reached that track. With the 2 s
+  confirmation-poll gap, skimming (15 Next clicks in 10 s) or a held Next key stays at about
+  15 interactive requests per 10 s, well under the budget.
 - Seeks are coalesced like volume: the engine sends one seek 300 ms after the last of a burst
   (a held key, a scrolled slider); the local position moves at once. A pending seek is
   dropped when the track changes or stops.
