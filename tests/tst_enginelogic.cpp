@@ -123,6 +123,8 @@ private slots:
     void startTimeoutIgnoredOnceStarted();
     void unavailableTrackFailsWithoutRequest();
     void unavailableNextIsSkippedAtTrackEnd();
+    void unavailableNextAtTrackEndSendsNoPauseBeforeQmmpSkips();
+    void unavailableTrackAfterNextSendsNoPauseBeforeQmmpSkips();
     void supersededStartIsCancelled();
     void logoutStopsQuietly();
     void logoutDropsPendingPause();
@@ -945,6 +947,40 @@ void TestEngineLogic::unavailableNextIsSkippedAtTrackEnd()
     m_logic->stop();
     m_logic->flushPendingPause();
     QCOMPARE(m_sink.calls.last(), u"pause"_s);
+}
+
+// the flush queued by the finish runs before qmmp handles the NormalError: the pause waits
+// for qmmp's stop, and its play of the following track cancels it
+void TestEngineLogic::unavailableNextAtTrackEndSendsNoPauseBeforeQmmpSkips()
+{
+    startPlaying(u"a"_s);
+    QVERIFY(m_logic->enqueue(u"spotify://track/b?unavailable"_s));
+    m_now += 199000;
+    m_logic->tick();
+    m_logic->updateState(deviceState(u"dev"_s, u"a"_s, 0, false));
+    m_logic->flushPendingPause();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/c"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
+    QCOMPARE(m_sink.calls.last(), u"play spotify:track:c 0"_s);
+}
+
+// the flush queued by Next's stop runs before qmmp handles the NormalError
+void TestEngineLogic::unavailableTrackAfterNextSendsNoPauseBeforeQmmpSkips()
+{
+    startPlaying(u"a"_s);
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/b?unavailable"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    m_logic->stop();
+    QVERIFY(m_logic->enqueue(u"spotify://track/c"_s));
+    m_logic->play();
+    m_logic->flushPendingPause();
+    QVERIFY(!m_sink.calls.contains(u"pause"_s));
+    QCOMPARE(m_sink.calls.last(), u"play spotify:track:c 0"_s);
 }
 
 void TestEngineLogic::supersededStartIsCancelled()

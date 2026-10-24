@@ -61,7 +61,8 @@ public:
     void playerState(std::function<void(const ApiResult &, const PlayerState &)> callback);
     void displayName(std::function<void(const ApiResult &, const QString &)> callback);
     void userId(std::function<void(const ApiResult &, const QString &)> callback);
-    // playback commands (play … setVolume) time out after 5 s, other requests after 15 s
+    // track starts (play, next) time out after 8 s, other playback commands (pause … setVolume)
+    // after 5 s, other requests after 15 s
     ApiRequestHandle play(const QString &deviceId, const QStringList &uris, qint64 positionMs, Callback callback);
     void pause(const QString &deviceId, Callback callback);
     void resume(const QString &deviceId, Callback callback);
@@ -93,8 +94,9 @@ signals:
 private:
     // Bulk: one of many requests of a paged load or a link expansion; it waits for a free slot
     // in its own budget instead of failing. Command: a playback command, with a short timeout
-    // (a late one would act on a state qmmp has left)
-    enum class Kind { Query, Command, Bulk };
+    // (a late one would act on a state qmmp has left). Start: a track start, a command with a
+    // longer timeout (a waking device answers slowly)
+    enum class Kind { Query, Command, Start, Bulk };
 
     // woken: a bulk request whose turn came, it goes before the queue
     void request(const QByteArray &verb, const QUrl &url, const QByteArray &body, Callback callback, Kind kind = Kind::Query,

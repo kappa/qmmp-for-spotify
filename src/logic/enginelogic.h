@@ -127,6 +127,9 @@ private:
     qint64 m_pendingStartMs = 0;
     qint64 m_startSentAt = -1;
     bool m_pendingPause = false;
+    // the pause a failed start restored waits for qmmp's stop: a flush queued before the
+    // failure (by stop() or the finish) would send it before qmmp skips to the next track
+    bool m_pauseAwaitsStop = false;
     // the pause play() cancelled, restored if that play fails
     bool m_cancelledPause = false;
     // start timeouts since the device last started one of our tracks: the second one stops qmmp

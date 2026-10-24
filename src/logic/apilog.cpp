@@ -11,14 +11,17 @@ QString apiLogLine(const QDateTime &time, const QByteArray &verb, const QString 
                          QString::number(status), QString::number(durationMs), note }.join(u'\t');
 }
 
-QString apiLogNote(int status, const QByteArray &retryAfter, bool retried, const QString &networkError)
+QString apiLogNote(int status, const QByteArray &retryAfter, bool retried, const QString &networkError,
+                   bool cancelled)
 {
     QStringList notes;
     if(retried)
         notes << u"retry"_s;
     if(status == 429)
         notes << u"retry-after="_s + QString::number(parseRetryAfterSeconds(retryAfter));
-    if(status == 0)
+    if(cancelled)
+        notes << u"cancelled"_s;
+    else if(status == 0)
         notes << networkError;
     return notes.join(u' ');
 }

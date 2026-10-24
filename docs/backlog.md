@@ -72,8 +72,3 @@ and can trip the 60 s block (then Next stops qmmp). Fix: keep the last-start tim
 ### Leftovers from the B10 review
 - 403 "Restriction violated" is now always a silent skip; if Spotify uses it for a
   device-level restriction, qmmp could walk a whole playlist silently (~1 play/s).
-- The 5 s timeout for playback commands may stop qmmp on a slow but successful start
-  (e.g. a phone waking up); consider ~8 s for starts.
-- Minor: a pause goes out before skipping over an unavailable next track; a second
-  "not logged in" notice can follow the logout notice on session expiry; the follower
-  adds a duplicate if a marked track ever plays; "Operation canceled" lines in api.log.

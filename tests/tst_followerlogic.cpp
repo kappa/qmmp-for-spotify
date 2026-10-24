@@ -32,6 +32,7 @@ private slots:
     void selectsNextOccurrenceAfterCurrent();
     void selectsEarlierOccurrence();
     void appendsMissingTrack();
+    void selectsMarkedTrack();
     void expansion();
     void expansionFailureMessage();
     void removesOnlyLinksSpotifyRejects();
@@ -97,6 +98,15 @@ void TestFollowerLogic::selectsEarlierOccurrence()
 void TestFollowerLogic::appendsMissingTrack()
 {
     QCOMPARE(decideFollow(playing(u"dev"_s, u"new"_s), u"dev"_s, {}, QString(), false, kPlaylist, -1).action, FollowDecision::Append);
+}
+
+// a track marked unavailable at load time that the device plays anyway
+void TestFollowerLogic::selectsMarkedTrack()
+{
+    const QStringList playlist = { u"spotify://track/a"_s, u"spotify://track/y?unavailable"_s, u"spotify://track/b"_s };
+    const FollowDecision decision = decideFollow(playing(u"dev"_s, u"y"_s), u"dev"_s, { u"a"_s }, QString(), false, playlist, 0);
+    QCOMPARE(decision.action, FollowDecision::Select);
+    QCOMPARE(decision.index, 1);
 }
 
 void TestFollowerLogic::expansion()
